@@ -1,12 +1,14 @@
 (async () => {
   'use strict';
 
-  const VERSION = '1.0.1';
+  const VERSION = '1.2.0';
   const SCRIPT_KEY = '__MIEMIE_FUTURE_PLANNER_EXTERNAL__';
   const BUTTON_NAME = 'Miemie Future Planner';
   const STORAGE_KEY = 'miemie_future_planner_external_config_v1';
-  const META_KEY = '__miemie_future_outline_v1';
-  const EXT_PROMPT_ID = 'miemie_external_future_outline_v1';
+  const META_KEY = '__miemie_future_outline_v2';
+  const LEGACY_META_KEYS = ['__miemie_future_outline_v1'];
+  const EXT_PROMPT_ID = 'miemie_external_future_outline_v2';
+  const LEGACY_EXT_PROMPT_IDS = ['miemie_external_future_outline_v1'];
   const UI_ID = 'mfp-external-ui-v1';
 
   // Tavern Helper scripts run in a background iframe. UI must be mounted into
@@ -29,33 +31,68 @@
     if (window[SCRIPT_KEY]?.cleanup) await window[SCRIPT_KEY].cleanup();
   } catch (_) {}
 
-  const PLANNER_SYSTEM = `Bạn là bộ lập đại cương tương lai kín cho một phiên nhập vai SillyTavern. Bạn KHÔNG viết chính văn, KHÔNG điều khiển <user>, KHÔNG khen <user>, KHÔNG tạo drama để giải trí. Nhiệm vụ duy nhất là duy trì một đại cương nhân quả ngắn để model kể chuyện chính bám theo.
+  const PLANNER_SYSTEM = `Bạn là bộ lập đại cương tương lai KÍN cho một phiên nhập vai SillyTavern. Bạn KHÔNG viết chính văn, KHÔNG điều khiển <user>, KHÔNG khen <user>, KHÔNG tạo drama để giải trí. Nhiệm vụ duy nhất là duy trì một đại cương nhân quả ngắn, khách quan, có thể bị thay đổi bởi diễn biến mới để model kể chuyện chính bám theo.
 
-QUY TẮC BẮT BUỘC:
-1. Phân biệt hai loại tuyến:
-- OBJECTIVE_LOCKED: sự kiện thế giới tồn tại độc lập với lựa chọn hiện tại của <user>; nếu dữ liệu nói lõi sự kiện là không thể tránh thì không được tự hủy nó. <user> chỉ có thể thay đổi phần mà thiết lập cho phép như thời điểm, hoàn cảnh, thiệt hại hoặc kết quả phụ.
-- CONDITIONAL: sự kiện sinh từ hành động, quan hệ, xung đột hoặc điều kiện có thể thay đổi. Phải có activation_conditions và cancel_conditions/downgrade_conditions. Khi điều kiện hủy đã thực sự xảy ra, xóa tuyến đó; tuyệt đối không bịa lý do mới để ép nó quay lại.
-2. Mọi tuyến phải có nguyên nhân, phạm vi và NPC/tổ chức liên quan hợp lý. Không nhảy từ xung đột cá nhân lên chiến tranh/tận thế nếu không có cơ chế độc lập tương ứng.
-3. Foreshadowing chỉ là dấu hiệu nhỏ, tự nhiên, ít nổi bật, có thể có cách giải thích đời thường và không cần xuất hiện ở mỗi lượt. Không viết dấu hiệu theo kiểu khiến <user> chắc chắn nhận ra. Không dùng lời bình như “đáng chú ý”, “bất thường”, “điềm báo”, “không ai biết rằng”, “sắp có chuyện”, “như thể báo hiệu”.
-4. Không suy luận thay <user>. Không ghi “<user> sẽ nhận ra/nghi ngờ/hiểu/chọn”. Chỉ mô tả điều kiện khách quan mà nếu xuất hiện thì model chính có thể cài một chi tiết nhỏ.
-5. Không tự thêm quan hệ, sức mạnh bí mật, tổ chức hay sự kiện lớn nếu dữ liệu hiện tại không hỗ trợ.
-6. Ưu tiên cập nhật tuyến cũ thay vì tạo tuyến mới. Tối đa 6 tuyến đang hoạt động. Không cần đủ số lượng.
-7. Chỉ xuất JSON hợp lệ, không markdown, không giải thích ngoài JSON.
+QUY TẮC BẮT BUỘC — ƯU TIÊN CAO NHẤT:
+
+0. CANON KHÔNG PHẢI ĐỊNH MỆNH CỦA <user>
+- Dòng thời gian/nguyên tác chỉ là dữ liệu tham chiếu về thế giới, KHÔNG phải kịch bản bắt buộc phải tái diễn với <user>.
+- Tuyệt đối cấm lấy một sự kiện từng xảy ra với nhân vật chính nguyên tác rồi thay tên nhân vật chính bằng <user> và gọi nó là OBJECTIVE_LOCKED.
+- Một cuộc gặp, lời mời, trận chiến, nhiệm vụ, quan hệ hay cảnh tương tác cần <user> có mặt/đi tới/chấp nhận/thực hiện hành động thì KHÔNG phải sự kiện khách quan cố định.
+- Ví dụ: “Rudeus gặp Ruijerd trong nguyên tác” KHÔNG chứng minh “<user> chắc chắn gặp Ruijerd”. Chỉ khi trạng thái hiện tại tạo ra đường nhân quả độc lập và hợp lý thì nó mới có thể trở thành CONDITIONAL.
+
+1. PHÂN BIỆT OBJECTIVE_LOCKED VÀ CONDITIONAL BẰNG BÀI TEST ĐỘC LẬP
+- OBJECTIVE_LOCKED chỉ hợp lệ nếu trả lời CÓ cho câu hỏi: “Nếu <user> lập tức rời khu vực, không làm gì thêm, từ chối tham gia hoặc biến mất khỏi tuyến này, LÕI SỰ KIỆN CHÍNH XÁC NÀY vẫn xảy ra vì nguyên nhân riêng của thế giới chứ?”
+- Nếu câu trả lời là KHÔNG hoặc KHÔNG CHẮC -> chuyển sang CONDITIONAL hoặc bỏ hẳn.
+- OBJECTIVE_LOCKED phải ghi independence_test rõ ràng. Không có independence_test đáng tin -> không được giữ trong objective_locked.
+- Canon/timeline một mình không đủ làm căn cứ OBJECTIVE_LOCKED nếu sự kiện phụ thuộc vào nhân vật chính nguyên tác.
+- fixed_core của OBJECTIVE_LOCKED không được là “NPC X gặp/tiếp cận/bảo vệ/theo dõi/mời/tấn công <user>”.
+- Một NPC cụ thể chủ động tiến tới <user> do dấu vết/hành động của <user> luôn là CONDITIONAL, vì nếu <user> đổi vị trí, che dấu vết hoặc rời khu vực thì cuộc tiếp xúc có thể không xảy ra.
+- Nếu một event có tên dạng ‘Gặp X’, ‘X tiếp cận <user>’, ‘X điều tra <user>’, ‘X bảo vệ <user>’ thì mặc định loại khỏi OBJECTIVE_LOCKED, bất kể canon từng xảy ra thế nào.
+
+2. CONDITIONAL PHẢI THỰC SỰ CÓ THỂ BỊ HỦY
+- CONDITIONAL sinh từ hành động, quan hệ, hiểu lầm, lợi ích hoặc xung đột có thể thay đổi.
+- Phải có activation_conditions và cancel_conditions; nếu thích hợp thì có downgrade_conditions.
+- Khi điều kiện hủy đã thực sự xảy ra, retire tuyến đó. Tuyệt đối không bịa “ngoài mặt hòa giải nhưng trong lòng vẫn...” chỉ để cứu event.
+- Mọi bước leo thang phải có escalation_gate. Không nhảy từ chuyện cá nhân sang chiến tranh/tận thế nếu không tồn tại cơ chế độc lập tương ứng.
+
+3. DẤU HIỆU KÍN — MẶC ĐỊNH LÀ KHÔNG CÀI
+- subtle_sign_candidates được phép là [] và đây là lựa chọn mặc định nếu không có chi tiết thật sự tự nhiên.
+- Dấu hiệu phải là một dữ kiện cảm giác/đời thường nhỏ, có thể bị bỏ qua hoàn toàn khi đọc lần đầu và KHÔNG tự mang ý nghĩa “đang có chuyện”.
+- Dấu hiệu không được nêu tên tác nhân/sự kiện tương lai, không được chứa đặc điểm nhận dạng quá đặc thù đủ để đoán ra tác nhân.
+- CẤM các dạng: bóng người bí ẩn, người đứng xa quan sát, ánh mắt theo dõi, silhouette cầm vũ khí đặc trưng, tiếng cười bí hiểm, lời thoại úp mở, “có ai đó đang nhìn”, “có gì đó không ổn”, “đáng chú ý”, “bất thường”, “điềm báo”, “như thể báo hiệu”, “sắp có chuyện”, “linh cảm”, “một cảm giác khó tả”.
+- CẤM suy luận thay <user>: không viết <user> nhận ra/nghi ngờ/hiểu/ghi nhớ/cảm thấy chi tiết là bất thường.
+- Nếu một dấu hiệu chỉ có tác dụng khi narrator phải giải thích nó liên quan tới event tương lai, đó là dấu hiệu KHÔNG HỢP LỆ.
+- Ví dụ hợp lệ hơn: một hóa đơn bị trì hoãn, lịch trực đổi người, một quầy hàng đóng sớm, dấu bánh xe mới trên đường, một căn phòng vốn sáng nay nay tắt đèn — nhưng chỉ khi những chi tiết đó thật sự có đường nhân quả với outline và hợp cảnh hiện tại.
+
+4. QUY MÔ + NPC LIÊN QUAN
+- Mọi tuyến phải có nguyên nhân, phạm vi và NPC/tổ chức liên quan hợp lý.
+- NPC chỉ tham gia khi có đường thông tin/lợi ích/nghĩa vụ/quan hệ thật sự.
+- Không kéo NPC canon nổi tiếng vào chỉ vì họ nổi tiếng hoặc vì muốn tăng độ lớn câu chuyện.
+- Ưu tiên cập nhật tuyến cũ hơn là tạo tuyến mới. Tối đa 6 tuyến hoạt động, không cần đủ số lượng.
+
+5. KHÔNG SUY LUẬN THAY <user>
+- Không ghi “<user> sẽ...”, “<user> nhận ra...”, “<user> quyết định...”, “<user> chắc chắn...”.
+- Nếu một nhánh phụ thuộc <user>, chỉ được mô tả bằng điều kiện khách quan: “Nếu <user> làm X thì...”.
+
+6. CHỈ XUẤT JSON HỢP LỆ, KHÔNG MARKDOWN, KHÔNG GIẢI THÍCH NGOÀI JSON.
 
 SCHEMA:
 {
-  "version": 1,
+  "version": 2,
   "objective_locked": [
     {
       "id": "O1",
       "event": "mô tả ngắn",
-      "basis": "căn cứ đã có",
+      "basis": "nguyên nhân độc lập đã được thiết lập",
+      "source_basis": "world_state|worldbook|established_event|mixed",
+      "independence_test": "Nếu <user> biến mất khỏi tuyến này thì sự kiện vẫn xảy ra vì...",
       "phase": "dormant|forming|approaching|active",
       "fixed_core": "phần không thể tránh",
       "user_can_change": "phần có thể tác động hoặc unknown",
       "next_hidden_step": "bước ngoài màn hình tiếp theo hoặc null",
       "earliest_touchpoint": "khi nào có thể chạm tới cảnh user hoặc null",
-      "subtle_sign_candidates": ["chi tiết nhỏ có thể cài nếu hợp cảnh"]
+      "subtle_sign_candidates": ["0-3 chi tiết cực nhỏ; để [] nếu không cần"]
     }
   ],
   "conditional": [
@@ -70,11 +107,11 @@ SCHEMA:
       "downgrade_conditions": ["điều kiện làm giảm quy mô"],
       "escalation_gate": "điều kiện bắt buộc trước khi tăng quy mô",
       "next_hidden_step": "bước ngoài màn hình tiếp theo hoặc null",
-      "subtle_sign_candidates": ["chi tiết nhỏ có thể cài nếu hợp cảnh"]
+      "subtle_sign_candidates": ["0-3 chi tiết cực nhỏ; để [] nếu không cần"]
     }
   ],
   "retired": [
-    {"id": "C0", "reason": "resolved|cancelled|invalidated"}
+    {"id": "C0", "reason": "resolved|cancelled|invalidated|failed_independence_test"}
   ]
 }`;
 
@@ -88,7 +125,7 @@ SCHEMA:
     maxTokens: 1400,
     historyMessages: 18,
     timeoutMs: 45000,
-    injectDepth: 4,
+    injectDepth: 0,
   };
 
   let config = loadConfig();
@@ -196,12 +233,36 @@ SCHEMA:
   function getSavedOutline(ctx = stContext()) {
     const value = getSavedEnvelope(ctx);
     if (!value) return null;
-    if (value.outline && typeof value.outline === 'object') return value.outline;
-    if (typeof value === 'object') return value;
-    if (typeof value === 'string') {
-      try { return JSON.parse(value); } catch (_) { return null; }
+    let outline = null;
+    if (value.outline && typeof value.outline === 'object') outline = value.outline;
+    else if (typeof value === 'object') outline = value;
+    else if (typeof value === 'string') {
+      try { outline = JSON.parse(value); } catch (_) { outline = null; }
     }
-    return null;
+    // Fail closed: schema v1 / malformed outlines are never injected.
+    if (!outline || Number(outline.version) !== 2) return null;
+    return outline;
+  }
+
+  async function clearLegacyState(ctx = stContext()) {
+    if (!ctx) return;
+    let metadataChanged = false;
+    try {
+      for (const key of LEGACY_META_KEYS) {
+        if (ctx.chatMetadata && Object.prototype.hasOwnProperty.call(ctx.chatMetadata, key)) {
+          delete ctx.chatMetadata[key];
+          metadataChanged = true;
+        }
+      }
+      if (metadataChanged) await ctx.saveMetadata?.();
+    } catch (_) {}
+    try {
+      if (ctx.setExtensionPrompt) {
+        for (const id of LEGACY_EXT_PROMPT_IDS) {
+          await ctx.setExtensionPrompt(id, '', 1, 0, false, 0);
+        }
+      }
+    } catch (_) {}
   }
 
   async function activeWorldInfoSnapshot(ctx) {
@@ -269,14 +330,102 @@ SCHEMA:
     throw new Error('Model phụ không trả về JSON hợp lệ');
   }
 
-  function sanitizeOutline(value) {
+  const SIGN_HARD_BAN = /(?:đáng chú ý|bất thường|điềm báo|như thể báo hiệu|dường như báo hiệu|sắp có chuyện|có gì đó không ổn|một cảm giác khó tả|linh cảm|không ai biết rằng|không hề biết rằng|có ai đó đang (?:nhìn|quan sát|theo dõi)|ánh mắt[^.。!?！\n]{0,60}(?:quan sát|theo dõi)|bóng người[^.。!?！\n]{0,80}(?:quan sát|theo dõi|nhìn về)|(?:đứng|ẩn|lướt)\s+(?:trên|sau|ở)\s+[^.。!?！\n]{0,60}(?:quan sát|theo dõi)|cầm\s+(?:giáo|kiếm|cung|súng)[^.。!?！\n]{0,60}(?:quan sát|theo dõi|nhìn về))/i;
+  const USER_MIND_BAN = /(?:<user>|người chơi|\byou\b)[^.。!?！\n]{0,80}(?:nhận ra|nghi ngờ|hiểu|ghi nhớ|linh cảm|cảm thấy|sẽ chọn|sẽ quyết định)/i;
+  const ENCOUNTER_EVENT = /(?:^|\b)(?:gặp gỡ|gặp|tiếp cận|đụng độ|đối đầu|theo dõi|bảo vệ|mời|tuyển mộ|liên hôn|tỏ tình|trả thù|tấn công)\b/i;
+
+  function cleanStringArray(value, max = 8) {
+    return Array.isArray(value) ? value.map(x => String(x || '').trim()).filter(Boolean).slice(0, max) : [];
+  }
+
+  function sanitizeSigns(value, ctx, related = []) {
+    const userName = String(ctx?.name1 || '').trim().toLowerCase();
+    const names = cleanStringArray(related, 12).map(x => x.toLowerCase()).filter(x => x.length >= 3);
+    const out = [];
+    for (const raw of cleanStringArray(value, 8)) {
+      const s = raw.replace(/\s+/g, ' ').trim();
+      const low = s.toLowerCase();
+      if (!s || s.length > 220) continue;
+      if (SIGN_HARD_BAN.test(s) || USER_MIND_BAN.test(s)) continue;
+      if (userName && low.includes(userName) && /(?:nhận ra|nhìn thấy|cảm thấy|nghi ngờ|ghi nhớ|chú ý)/i.test(s)) continue;
+      if (names.some(n => low.includes(n))) continue; // Dấu hiệu không được gọi thẳng tên tác nhân tương lai.
+      if (/\b(?:ruijerd|orsted|hitogami|rudeus)\b/i.test(s)) continue; // guard các canon-name dễ bị dùng như spoiler trực tiếp
+      out.push(s);
+      if (out.length >= 3) break;
+    }
+    return out;
+  }
+
+  function objectiveIsIndependent(item, ctx) {
+    const event = String(item?.event || '');
+    const fixed = String(item?.fixed_core || '');
+    const basis = String(item?.basis || '');
+    const source = String(item?.source_basis || '');
+    const test = String(item?.independence_test || '').trim();
+    const userName = String(ctx?.name1 || '').trim();
+    if (test.length < 12) return false;
+    if (/\b(?:không chắc|uncertain|unknown)\b/i.test(test)) return false;
+    if (/(?:nếu|khi)\s+<user>/i.test(test) || /phụ thuộc\s+(?:vào\s+)?<user>/i.test(test)) return false;
+    if (userName && new RegExp(`(?:nếu|khi|cần|đợi|gặp|tiếp cận|bảo vệ|theo dõi|tấn công|mời)[^\\n.]{0,60}${userName.replace(/[.*+?^${}()|[\\]\\]/g,'\\$&')}`, 'i').test(`${event} ${fixed} ${test}`)) return false;
+    // Cuộc gặp/tương tác cá nhân không được khóa khách quan; nếu thật sự độc lập, planner phải diễn đạt thành biến động thế giới chứ không phải “gặp X”.
+    if (ENCOUNTER_EVENT.test(event) || ENCOUNTER_EVENT.test(fixed)) return false;
+    // Canon/timeline đơn độc không đủ làm căn cứ khóa.
+    if (/(?:nguyên tác|canon|timeline|dòng thời gian)/i.test(basis) && !/(?:world_state|worldbook|established_event|mixed)/i.test(source)) return false;
+    return true;
+  }
+
+  function sanitizeOutline(value, ctx = stContext()) {
     if (!value || typeof value !== 'object') throw new Error('Outline rỗng');
-    const out = {
-      version: 1,
-      objective_locked: Array.isArray(value.objective_locked) ? value.objective_locked.slice(0, 6) : [],
-      conditional: Array.isArray(value.conditional) ? value.conditional.slice(0, 6) : [],
-      retired: Array.isArray(value.retired) ? value.retired.slice(0, 12) : [],
-    };
+    const retired = Array.isArray(value.retired) ? value.retired.slice(0, 12).map(x => ({ id:String(x?.id||''), reason:String(x?.reason||'invalidated') })) : [];
+    const objective = [];
+    for (const raw of Array.isArray(value.objective_locked) ? value.objective_locked.slice(0, 10) : []) {
+      if (!raw || typeof raw !== 'object') continue;
+      if (!objectiveIsIndependent(raw, ctx)) {
+        if (raw.id) retired.push({ id:String(raw.id), reason:'failed_independence_test' });
+        continue;
+      }
+      const item = {
+        id: String(raw.id || `O${objective.length+1}`),
+        event: String(raw.event || '').trim(),
+        basis: String(raw.basis || '').trim(),
+        source_basis: String(raw.source_basis || 'mixed').trim(),
+        independence_test: String(raw.independence_test || '').trim(),
+        phase: String(raw.phase || 'dormant').trim(),
+        fixed_core: String(raw.fixed_core || '').trim(),
+        user_can_change: String(raw.user_can_change || 'unknown').trim(),
+        next_hidden_step: raw.next_hidden_step == null ? null : String(raw.next_hidden_step).trim(),
+        earliest_touchpoint: raw.earliest_touchpoint == null ? null : String(raw.earliest_touchpoint).trim(),
+        subtle_sign_candidates: sanitizeSigns(raw.subtle_sign_candidates, ctx, [raw.event, raw.fixed_core]),
+      };
+      if (item.event && item.fixed_core) objective.push(item);
+      if (objective.length >= 6) break;
+    }
+    const conditional = [];
+    for (const raw of Array.isArray(value.conditional) ? value.conditional.slice(0, 10) : []) {
+      if (!raw || typeof raw !== 'object') continue;
+      const involved = cleanStringArray(raw.involved, 12);
+      const item = {
+        id: String(raw.id || `C${conditional.length+1}`),
+        event: String(raw.event || '').trim(),
+        cause: String(raw.cause || '').trim(),
+        phase: String(raw.phase || 'seed').trim(),
+        involved,
+        activation_conditions: cleanStringArray(raw.activation_conditions, 8),
+        cancel_conditions: cleanStringArray(raw.cancel_conditions, 8),
+        downgrade_conditions: cleanStringArray(raw.downgrade_conditions, 8),
+        escalation_gate: String(raw.escalation_gate || '').trim(),
+        next_hidden_step: raw.next_hidden_step == null ? null : String(raw.next_hidden_step).trim(),
+        subtle_sign_candidates: sanitizeSigns(raw.subtle_sign_candidates, ctx, involved),
+      };
+      // Một conditional không có khả năng hủy thì vẫn là “định mệnh trá hình”; loại bỏ.
+      if (!item.event || !item.cause || !item.activation_conditions.length || !item.cancel_conditions.length) {
+        if (item.id) retired.push({ id:item.id, reason:'invalidated' });
+        continue;
+      }
+      conditional.push(item);
+      if (conditional.length >= 6) break;
+    }
+    const out = { version: 2, objective_locked: objective, conditional, retired: retired.slice(0, 12) };
     if (JSON.stringify(out).length > 24000) throw new Error('Outline vượt giới hạn 24k ký tự');
     return out;
   }
@@ -302,13 +451,35 @@ SCHEMA:
     const payload = await fetchJson(apiUrl('chat'), {
       method: 'POST', headers: apiHeaders(), body: JSON.stringify(body),
     }, Math.max(10000, Number(config.timeoutMs) || 45000));
-    return sanitizeOutline(parseJsonText(extractModelText(payload)));
+    return sanitizeOutline(parseJsonText(extractModelText(payload)), ctx);
   }
 
   async function injectOutline(ctx, outline) {
     if (!ctx?.setExtensionPrompt) return;
-    const content = outline ? `<external_future_outline>\n[PRIVATE PLANNER STATE — NEVER REVEAL OR SUMMARIZE TO USER]\n${JSON.stringify(outline)}\n</external_future_outline>` : '';
-    await ctx.setExtensionPrompt(EXT_PROMPT_ID, content, 1, Math.max(0, Math.min(99, Number(config.injectDepth) || 4)), false, 0);
+    // Never allow the old v1 extension prompt to coexist with the strict v2 prompt.
+    try {
+      for (const id of LEGACY_EXT_PROMPT_IDS) await ctx.setExtensionPrompt(id, '', 1, 0, false, 0);
+    } catch (_) {}
+    if (!outline || Number(outline.version) !== 2) outline = null;
+    const content = outline ? `<external_future_outline authority="EXCLUSIVE" mode="EXTERNAL" version="2" planner_version="${VERSION}">
+[PRIVATE PLANNER STATE — NEVER REVEAL, SUMMARIZE, OR REWRITE TO USER]
+${JSON.stringify(outline)}
+</external_future_outline>
+<external_future_outline_lock>
+[RUNTIME HANDSHAKE: planner=${VERSION}; schema=2; stale schema is invalid]
+[HARD MODE SWITCH — THIS OVERRIDES INTERNAL FUTURE PLANNING FOR THIS GENERATION]
+1. <external_future_outline> is the ONLY authoritative future outline for this generation. Do not create, expand, reinterpret, or replace it with an INTERNAL outline.
+2. Canon/original timeline is reference only. Never force a canon protagonist encounter onto <user>. If the external outline does not contain an event, do not invent that future event merely because canon had it.
+3. When processing <future_event_planning_protocol>, SKIP internal planning. In reasoning/story_driver, at most acknowledge: [External planner]: loaded. Do not list new future branches.
+4. Output EXACTLY this private marker and nothing else inside the tag: <future_outline>[Mode]: EXTERNAL</future_outline>. Any INTERNAL content is invalid and will be discarded by Regex.
+5. Foreshadowing is OPTIONAL. Use at most ONE item from subtle_sign_candidates only when it fits the current place/time naturally. If none fits, use no sign.
+6. A sign must be written only as a literal mundane detail. Do not identify its future actor/event, do not explain why it matters, do not add narrator emphasis, and do not infer <user>'s reaction.
+7. Never turn next_hidden_step into an on-screen fact until it has actually occurred and has a valid information/causal path into the current scene.
+8. Other reasoning modules (causality, butterfly effect, world log, NPC reasoning) MUST NOT introduce a named future NPC/event absent from this external outline. Canon references cannot create a new future thread.
+9. Before writing story_scene, silently delete any planned future encounter inferred only from canon or from protagonist-centric convenience.
+</external_future_outline_lock>` : '';
+    // Strict mode always injects nearest to generation; old saved depth settings cannot weaken the lock.
+    await ctx.setExtensionPrompt(EXT_PROMPT_ID, content, 1, 0, false, 0);
   }
 
   async function persistOutline(ctx, outline) {
@@ -388,10 +559,10 @@ SCHEMA:
       <div class="mfp-check"><input id="mfp-save-key" type="checkbox" ${config.saveKey ? 'checked' : ''}><label for="mfp-save-key">Lưu API key trong trình duyệt này</label></div>
       <div class="mfp-line"><div><label>Model</label><input id="mfp-model" list="mfp-models-list" value="${esc(config.model)}" placeholder="model-id"><datalist id="mfp-models-list"></datalist></div><button id="mfp-load-models">Load model</button></div>
       <div class="mfp-row"><div><label>Temperature</label><input id="mfp-temp" type="number" min="0" max="2" step="0.05" value="${esc(config.temperature)}"></div><div><label>Max tokens</label><input id="mfp-tokens" type="number" min="256" max="8192" value="${esc(config.maxTokens)}"></div><div><label>Lịch sử (message)</label><input id="mfp-history" type="number" min="4" max="40" value="${esc(config.historyMessages)}"></div></div>
-      <div class="mfp-row"><div><label>Timeout (ms)</label><input id="mfp-timeout" type="number" min="10000" max="180000" value="${esc(config.timeoutMs)}"></div><div><label>Inject depth</label><input id="mfp-depth" type="number" min="0" max="99" value="${esc(config.injectDepth)}"></div><div></div></div>
+      <div class="mfp-row"><div><label>Timeout (ms)</label><input id="mfp-timeout" type="number" min="10000" max="180000" value="${esc(config.timeoutMs)}"></div><div><label>Strict lock</label><input value="ON · depth 0" disabled></div><div></div></div>
       <div class="mfp-actions"><button id="mfp-save">Lưu cấu hình</button><button id="mfp-test">Test + Load model</button><button id="mfp-run">Tính đại cương ngay</button><button id="mfp-clear">Xóa outline chat này</button></div>
       <div id="mfp-status" class="mfp-status"></div>
-      <div class="mfp-note">Planner chỉ lập đại cương kín. Nếu endpoint chặn CORS, hãy dùng URL proxy có cho phép browser request. Outline được lưu theo từng chat và inject bằng system prompt ở depth đã chọn.</div>
+      <div class="mfp-note">Planner chỉ lập đại cương kín. Nếu endpoint chặn CORS, hãy dùng URL proxy có cho phép browser request. Outline được lưu theo từng chat. Strict lock luôn inject ở depth 0 để model chính không tự quay về INTERNAL.</div>
     </section>
     <section class="mfp-section">
       <h3>Đại cương hiện tại</h3>
@@ -431,7 +602,7 @@ SCHEMA:
       maxTokens: Number(q('#mfp-tokens')?.value || 1400),
       historyMessages: Number(q('#mfp-history')?.value || 18),
       timeoutMs: Number(q('#mfp-timeout')?.value || 45000),
-      injectDepth: Number(q('#mfp-depth')?.value || 4),
+      injectDepth: 0,
     };
   }
 
@@ -609,11 +780,13 @@ SCHEMA:
   // Initialize only after the page body exists.
   if (!hostDocument.body) await new Promise(resolve => hostWindow.addEventListener('DOMContentLoaded', resolve, { once:true }));
   buildUi();
+  await clearLegacyState(stContext());
   const hasHelperButton = registerTavernHelperButton();
   if (!hasHelperButton) createFallbackButton();
   registerGenerationEvents();
   await injectOutline(stContext(), config.enabled ? getSavedOutline() : null);
 
   window[SCRIPT_KEY] = { version: VERSION, open: openUi, run: () => runPlanner({ manual:true }), cleanup, getConfig: () => ({...config}) };
-  console.info(`[Miemie Future Planner] loaded v${VERSION}; UI host=${hostDocument === document ? 'script-frame' : 'parent-document'}`);
+  try { hostWindow.__MIEMIE_FUTURE_PLANNER_RUNTIME__ = { version: VERSION, schema: 2, loadedAt: new Date().toISOString() }; } catch (_) {}
+  console.info(`[Miemie Future Planner] loaded v${VERSION}; schema=2; UI host=${hostDocument === document ? 'script-frame' : 'parent-document'}`);
 })();
