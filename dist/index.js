@@ -1,13 +1,28 @@
 (async () => {
   'use strict';
 
-  const VERSION = '1.0.0';
+  const VERSION = '1.0.1';
   const SCRIPT_KEY = '__MIEMIE_FUTURE_PLANNER_EXTERNAL__';
   const BUTTON_NAME = 'Miemie Future Planner';
   const STORAGE_KEY = 'miemie_future_planner_external_config_v1';
   const META_KEY = '__miemie_future_outline_v1';
   const EXT_PROMPT_ID = 'miemie_external_future_outline_v1';
   const UI_ID = 'mfp-external-ui-v1';
+
+  // Tavern Helper scripts run in a background iframe. UI must be mounted into
+  // SillyTavern's parent document, not the hidden script iframe document.
+  const hostWindow = (() => {
+    try { return window.parent && window.parent !== window ? window.parent : window; }
+    catch (_) { return window; }
+  })();
+  const hostDocument = (() => {
+    try { return hostWindow.document || document; }
+    catch (_) { return document; }
+  })();
+  const hostStorage = (() => {
+    try { return hostWindow.localStorage || localStorage; }
+    catch (_) { return localStorage; }
+  })();
 
   // Hot-reload safely when the script is re-imported/reloaded.
   try {
@@ -82,6 +97,7 @@ SCHEMA:
   let listeners = [];
   let fallbackButton = null;
   let overlay = null;
+  let hostClickListener = null;
 
   function stContext() {
     try { return SillyTavern?.getContext?.() || window.SillyTavern?.getContext?.() || null; }
@@ -90,7 +106,7 @@ SCHEMA:
 
   function loadConfig() {
     try {
-      const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+      const raw = JSON.parse(hostStorage.getItem(STORAGE_KEY) || '{}');
       const merged = { ...defaults, ...raw };
       if (!merged.saveKey) merged.apiKey = '';
       return merged;
@@ -101,7 +117,7 @@ SCHEMA:
     config = { ...config, ...next };
     const stored = { ...config };
     if (!stored.saveKey) stored.apiKey = '';
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
+    hostStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
   }
 
   function normalizeBaseUrl(raw) {
@@ -342,7 +358,7 @@ SCHEMA:
 
   function buildUi() {
     removeUi();
-    overlay = document.createElement('div');
+    overlay = hostDocument.createElement('div');
     overlay.id = UI_ID;
     overlay.innerHTML = `
 <style>
@@ -385,7 +401,7 @@ SCHEMA:
     </section>
   </div>
 </div>`;
-    document.body.appendChild(overlay);
+    hostDocument.body.appendChild(overlay);
 
     const q = s => overlay.querySelector(s);
     q('#mfp-close').onclick = closeUi;
@@ -420,13 +436,13 @@ SCHEMA:
   }
 
   function openUi() {
-    if (!document.getElementById(UI_ID)) buildUi();
+    if (!hostDocument.getElementById(UI_ID)) buildUi();
     overlay.style.display = 'flex';
     renderPreview();
     renderStatus();
   }
   function closeUi() { if (overlay) overlay.style.display = 'none'; }
-  function removeUi() { try { document.getElementById(UI_ID)?.remove(); } catch (_) {} overlay = null; }
+  function removeUi() { try { hostDocument.getElementById(UI_ID)?.remove(); } catch (_) {} overlay = null; }
 
   function setStatus(text) { status = String(text || ''); renderStatus(); }
   function renderStatus() { const el = overlay?.querySelector('#mfp-status'); if (el) el.textContent = status; }
@@ -465,19 +481,61 @@ SCHEMA:
   }
 
   function registerTavernHelperButton() {
+    let registered = false;
     try {
-      if (typeof appendInexistentScriptButtons === 'function') appendInexistentScriptButtons([{ name: BUTTON_NAME, visible: true }]);
-      if (typeof eventOn === 'function' && typeof getButtonEvent === 'function') {
-        eventOn(getButtonEvent(BUTTON_NAME), openUi);
-        return true;
+      if (typeof appendInexistentScriptButtons === 'function') {
+        appendInexistentScriptButtons([{ name: BUTTON_NAME, visible: true }]);
+        registered = true;
+      }
+
+      // Newer Tavern Helper exposes getButtonEvent(name), while some builds emit
+      // the literal button label as the event. Listen to BOTH so the imported
+      // button works across versions and Unicode/event-name implementations.
+      if (typeof eventOn === 'function') {
+        if (typeof getButtonEvent === 'function') {
+          try {
+            const ev = getButtonEvent(BUTTON_NAME);
+            if (ev) {
+              eventOn(ev, openUi);
+              listeners.push({ kind:'th', eventName:ev, handler:openUi });
+              registered = true;
+            }
+          } catch (_) {}
+        }
+        try {
+          eventOn(BUTTON_NAME, openUi);
+          listeners.push({ kind:'th', eventName:BUTTON_NAME, handler:openUi });
+          registered = true;
+        } catch (_) {}
+      }
+
+      // Last-resort bridge: capture clicks on the visible Tavern Helper button in
+      // the SillyTavern parent DOM. This fixes builds where the button renders but
+      // the script-button event is never emitted.
+      if (!hostClickListener && hostDocument?.addEventListener) {
+        hostClickListener = (event) => {
+          try {
+            let node = event.target;
+            for (let i = 0; node && i < 6; i++, node = node.parentElement) {
+              const text = String(node.textContent || '').replace(/\s+/g, ' ').trim();
+              if (text === BUTTON_NAME) {
+                event.preventDefault?.();
+                event.stopPropagation?.();
+                openUi();
+                return;
+              }
+            }
+          } catch (_) {}
+        };
+        hostDocument.addEventListener('click', hostClickListener, true);
       }
     } catch (e) { console.warn('[MFP] Tavern Helper button registration failed', e); }
-    return false;
+    return registered;
   }
 
   function createFallbackButton() {
     if (fallbackButton) return;
-    fallbackButton = document.createElement('button');
+    fallbackButton = hostDocument.createElement('button');
     fallbackButton.type = 'button';
     fallbackButton.textContent = '🧭 MFP';
     fallbackButton.title = 'Miemie Future Planner';
@@ -486,7 +544,7 @@ SCHEMA:
       border:'1px solid #667085', background:'#252936', color:'#fff', cursor:'pointer', font:'12px system-ui,sans-serif', boxShadow:'0 6px 20px rgba(0,0,0,.35)'
     });
     fallbackButton.onclick = openUi;
-    document.body.appendChild(fallbackButton);
+    hostDocument.body.appendChild(fallbackButton);
   }
 
   function registerGenerationEvents() {
@@ -536,6 +594,8 @@ SCHEMA:
     try { removeUi(); } catch (_) {}
     try { fallbackButton?.remove(); } catch (_) {}
     fallbackButton = null;
+    try { if (hostClickListener) hostDocument.removeEventListener('click', hostClickListener, true); } catch (_) {}
+    hostClickListener = null;
     for (const l of listeners.splice(0)) {
       try {
         if (l.kind === 'st') l.source?.removeListener?.(l.eventName, l.handler);
@@ -547,7 +607,7 @@ SCHEMA:
   }
 
   // Initialize only after the page body exists.
-  if (!document.body) await new Promise(resolve => window.addEventListener('DOMContentLoaded', resolve, { once:true }));
+  if (!hostDocument.body) await new Promise(resolve => hostWindow.addEventListener('DOMContentLoaded', resolve, { once:true }));
   buildUi();
   const hasHelperButton = registerTavernHelperButton();
   if (!hasHelperButton) createFallbackButton();
@@ -555,5 +615,5 @@ SCHEMA:
   await injectOutline(stContext(), config.enabled ? getSavedOutline() : null);
 
   window[SCRIPT_KEY] = { version: VERSION, open: openUi, run: () => runPlanner({ manual:true }), cleanup, getConfig: () => ({...config}) };
-  console.info(`[Miemie Future Planner] loaded v${VERSION}`);
+  console.info(`[Miemie Future Planner] loaded v${VERSION}; UI host=${hostDocument === document ? 'script-frame' : 'parent-document'}`);
 })();

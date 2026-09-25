@@ -1,5 +1,7 @@
 # Miemie Future Planner
 
+**Current runtime: v1.0.1** — UI is mounted into the SillyTavern parent document; button events support both `getButtonEvent(name)` and literal-name fallback.
+
 Standalone Tavern Helper script for SillyTavern. It keeps a private future-outline using a second OpenAI-compatible model and injects that outline into the main generation context.
 
 ## Files
