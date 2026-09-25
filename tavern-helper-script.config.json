@@ -1,0 +1,24 @@
+{
+  "enabled": true,
+  "dist": "dist/index.js",
+  "outputDirectory": "release",
+  "fileBaseName": "Miemie-Future-Planner",
+  "remoteUrl": "__REMOTE_URL__",
+  "script": {
+    "type": "script",
+    "enabled": true,
+    "baseName": "Miemie Future Planner",
+    "id": "b7213a7e-82c8-45a6-9baa-4f9636fa1b7c",
+    "info": "Miemie Future Planner — private future outline planner",
+    "button": {
+      "enabled": true,
+      "buttons": [
+        {
+          "name": "Miemie Future Planner",
+          "visible": true
+        }
+      ]
+    },
+    "data": {}
+  }
+}

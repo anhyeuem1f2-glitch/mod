@@ -1,0 +1,22 @@
+{
+  "type": "script",
+  "enabled": true,
+  "name": "Miemie Future Planner - GitHub Loader",
+  "id": "641c9ff4-02dd-4b1e-bdfa-2742dc2ad9a9",
+  "content": "(async () => {\n  'use strict';\n  const REMOTE_URL = '__REMOTE_URL__';\n  if (!REMOTE_URL.startsWith('https://')) throw new Error('Hãy thay __REMOTE_URL__ bằng URL HTTPS tới dist/index.js trên GitHub/jsDelivr.');\n  await import(`${REMOTE_URL}?v=${Date.now()}`);\n})();",
+  "info": "Loader template: thay __REMOTE_URL__ bằng URL tới dist/index.js sau khi push GitHub.",
+  "button": {
+    "enabled": true,
+    "buttons": [
+      {
+        "name": "Miemie Future Planner",
+        "visible": true
+      }
+    ]
+  },
+  "data": {},
+  "export_with": {
+    "data": true,
+    "button": true
+  }
+}
