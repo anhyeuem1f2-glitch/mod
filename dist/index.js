@@ -1,8 +1,8 @@
 (async () => {
   'use strict';
 
-  const VERSION = '1.4.1';
-  const BUILD_MARKER = 'USER_AUTHORITY_CAUSAL_ROOT_FORCE_VERIFY_2026-09-30';
+  const VERSION = '1.4.2';
+  const BUILD_MARKER = 'USER_AUTHORITY_CAUSAL_ROOT_FIXED_2026-09-30';
   const SCRIPT_KEY = '__MIEMIE_FUTURE_PLANNER_EXTERNAL__';
   const BUTTON_NAME = 'Miemie Future Planner';
   const STORAGE_KEY = 'miemie_future_planner_external_config_v1';
@@ -323,7 +323,7 @@ SCHEMA:
       '=== PREVIOUS FUTURE OUTLINE ===', previous ? JSON.stringify(previous) : '(none)',
       '=== RECENT CHAT ===', recent || '(empty)',
       '=== TASK ===',
-      'Update the private future outline from the current state. Preserve valid old threads, retire invalidated conditional threads, and add only well-supported new threads. Classify the newest user turn as ESTABLISH, ATTEMPT, or META. For ESTABLISH, first apply the user's declared action/result as the highest-authority immutable causal root and build the outline only from the post-user state. Never cancel, downgrade, reroute, delay, or veto that root because of old world state, canon, NPCs, logistics, or prior facts. For ATTEMPT, the attempt itself is fixed but its outcome may be calculated. Return only JSON following the schema.',
+      `Update the private future outline from the current state. Preserve valid old threads, retire invalidated conditional threads, and add only well-supported new threads. Classify the newest user turn as ESTABLISH, ATTEMPT, or META. For ESTABLISH, first apply the user's declared action/result as the highest-authority immutable causal root and build the outline only from the post-user state. Never cancel, downgrade, reroute, delay, or veto that root because of old world state, canon, NPCs, logistics, or prior facts. For ATTEMPT, the attempt itself is fixed but its outcome may be calculated. Return only JSON following the schema.`,
     ].filter(Boolean).join('\n\n');
   }
 
