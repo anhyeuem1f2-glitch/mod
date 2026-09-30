@@ -1,7 +1,8 @@
 (async () => {
   'use strict';
 
-  const VERSION = '1.3.0';
+  const VERSION = '1.4.1';
+  const BUILD_MARKER = 'USER_AUTHORITY_CAUSAL_ROOT_FORCE_VERIFY_2026-09-30';
   const SCRIPT_KEY = '__MIEMIE_FUTURE_PLANNER_EXTERNAL__';
   const BUTTON_NAME = 'Miemie Future Planner';
   const STORAGE_KEY = 'miemie_future_planner_external_config_v1';
@@ -50,14 +51,19 @@ QUY TẮC BẮT BUỘC — ƯU TIÊN CAO NHẤT:
 - Một NPC cụ thể chủ động tiến tới <user> do dấu vết/hành động của <user> luôn là CONDITIONAL, vì nếu <user> đổi vị trí, che dấu vết hoặc rời khu vực thì cuộc tiếp xúc có thể không xảy ra.
 - Nếu một event có tên dạng ‘Gặp X’, ‘X tiếp cận <user>’, ‘X điều tra <user>’, ‘X bảo vệ <user>’ thì mặc định loại khỏi OBJECTIVE_LOCKED, bất kể canon từng xảy ra thế nào.
 
-2. CURRENT USER INTENT KHÔNG PHẢI CONDITIONAL PLOT THREAD
-- Hành động/mục tiêu mà <user> vừa explicit xác lập ở lượt hiện tại là CURRENT INTENT, không phải event để planner tự nghĩ chướng ngại.
-- Không tạo CONDITIONAL có event chính là: <user> đi tới đâu, đặt vé, gọi điện, hỏi NPC, mua thứ bình thường, rời nơi hiện tại, hoặc thao tác user vừa ra lệnh.
-- Planner chỉ theo dõi HẬU QUẢ NGOẠI CẢNH sau khi current intent bắt đầu, nếu hậu quả đó thực sự đáng theo dõi.
-- Cấm phát minh blocker để "làm logic": hết vé, không có chuyến, bảo trì, luật cấm, tài khoản hạn chế, NPC can thiệp, thiếu tiền, lỗi hệ thống, thời tiết xấu, phải xác nhận lại... nếu state chưa established fact đó.
-- activation/cancel/downgrade/escalation chỉ được lấy từ FACT/cơ chế đã thiết lập, không phải nơi brainstorming trở ngại.
-- Current intent đời thường khả thi và không có external consequence đáng kể => KHÔNG tạo tuyến.
-- NPC có thể phản đối nếu hợp tính cách/quyền lợi, nhưng planner không biến phản đối thành veto nếu NPC không có cơ chế ngăn.
+2. USER INPUT LÀ CAUSAL ROOT CAO NHẤT
+- Phân loại newest user turn:
+  A) ESTABLISH/DECLARATIVE: user xác lập hành động/kết quả như fact.
+  B) ATTEMPT/UNCERTAIN: user nói thử/cố/xem có được không hoặc yêu cầu phán định.
+  C) META/QUESTION.
+- Với ESTABLISH: planner PHẢI áp hành động/kết quả vào state trước. Nó là IMMUTABLE ROOT FACT của lượt này.
+- Không được dùng old world state, canon, NPC, logistics, luật, tiền, lịch trình, khả năng hay bất kỳ blocker nào để cancel/downgrade/reroute ROOT FACT.
+- Nếu state cũ xung đột ROOT FACT: state cũ phải diverge/reconcile; user input thắng.
+- Chỉ sau khi tạo POST-USER STATE mới được lập future threads từ hậu quả của state đó.
+- cancel_conditions/downgrade_conditions/escalation_gate KHÔNG bao giờ áp lên ROOT FACT; chúng chỉ áp lên event tương lai của NPC/thế giới.
+- Với ATTEMPT: việc user đã thử là fact, nhưng outcome chưa cố định; planner có thể giữ nhiều nhánh kết quả dựa trên state.
+- Với META/QUESTION: không biến thành event in-world.
+- Không tạo future thread có event chính là hành động user vừa declaratively xác lập. Chỉ theo dõi downstream consequences.
 
 3. CONDITIONAL PHẢI THỰC SỰ CÓ THỂ BỊ HỦY
 - CONDITIONAL sinh từ hành động, quan hệ, hiểu lầm, lợi ích hoặc xung đột có thể thay đổi.
@@ -317,7 +323,7 @@ SCHEMA:
       '=== PREVIOUS FUTURE OUTLINE ===', previous ? JSON.stringify(previous) : '(none)',
       '=== RECENT CHAT ===', recent || '(empty)',
       '=== TASK ===',
-      'Update the private future outline from the current state. Preserve valid old threads, retire invalidated conditional threads, and add only well-supported new threads. Treat the newest explicit user action/goal as CURRENT INTENT, not as a conditional event to obstruct; do not invent blockers, reconfirmation, cancellation conditions, or friction unless already established by current world state. Return only JSON following the schema.',
+      'Update the private future outline from the current state. Preserve valid old threads, retire invalidated conditional threads, and add only well-supported new threads. Classify the newest user turn as ESTABLISH, ATTEMPT, or META. For ESTABLISH, first apply the user's declared action/result as the highest-authority immutable causal root and build the outline only from the post-user state. Never cancel, downgrade, reroute, delay, or veto that root because of old world state, canon, NPCs, logistics, or prior facts. For ATTEMPT, the attempt itself is fixed but its outcome may be calculated. Return only JSON following the schema.',
     ].filter(Boolean).join('\n\n');
   }
 
@@ -485,8 +491,11 @@ ${JSON.stringify(outline)}
 6. A sign must be written only as a literal mundane detail. Do not identify its future actor/event, do not explain why it matters, do not add narrator emphasis, and do not infer <user>'s reaction.
 7. Never turn next_hidden_step into an on-screen fact until it has actually occurred and has a valid information/causal path into the current scene.
 8. Other reasoning modules (causality, butterfly effect, world log, NPC reasoning) MUST NOT introduce a named future NPC/event absent from this external outline. Canon references cannot create a new future thread.
-9. The newest explicit user action/goal is CURRENT INTENT, not an obstacle seed. Do not invent blockers, reconfirmation, NPC veto, travel restrictions, outages, fees, missing routes, or other friction unless an established fact already supports it.
-10. Before writing story_scene, silently delete any planned future encounter inferred only from canon or from protagonist-centric convenience.
+9. USER AUTHORITY IS HIGHEST. Classify the newest user turn as ESTABLISH / ATTEMPT / META.
+10. If ESTABLISH: apply the declared user action/result to state FIRST as an immutable causal root. Old facts, canon, NPC opposition, logistics, rules, costs, travel restrictions, missing routes, outages, or prior assumptions may NOT veto that root. Reconcile the old state around the user's declaration.
+11. If ATTEMPT: the attempt itself happened; only the unresolved outcome may be calculated.
+12. All causality, butterfly effects, NPC reactions, world logs, and future threads must be derived from the POST-USER STATE.
+13. Before writing story_scene, silently delete any planned future encounter inferred only from canon or from protagonist-centric convenience.
 </external_future_outline_lock>` : '';
     // Strict mode always injects nearest to generation; old saved depth settings cannot weaken the lock.
     await ctx.setExtensionPrompt(EXT_PROMPT_ID, content, 1, 0, false, 0);

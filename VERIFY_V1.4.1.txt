@@ -1,0 +1,5 @@
+Miemie Future Planner v1.4.1
+BUILD_MARKER=USER_AUTHORITY_CAUSAL_ROOT_FORCE_VERIFY_2026-09-30
+dist/index.js SHA256=a67e192bb8a3a22b8e8f80ba1487b153d3d83ca6a36f60fe9d4fa647c52b161b
+
+If this file appears in git status after extraction, you are overwriting the correct repository root.
