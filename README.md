@@ -1,4 +1,4 @@
-# Miemie Future Planner v1.2.0
+# Miemie Future Planner v1.3.0
 
 Bản strict planner dùng cho preset Miemie.
 
@@ -14,9 +14,15 @@ Bản strict planner dùng cho preset Miemie.
 Ghi đè `dist/index.js`, hai file trong `release/`, và README rồi push. Preset GitHub loader hiện tại sẽ tự tải `dist/index.js` mới sau reload SillyTavern.
 
 
-## v1.2.0 strict migration
+## v1.3.0 strict migration
 - Uses schema-v2 metadata/injection IDs so stale v1 outlines cannot survive.
 - Deletes legacy chat metadata and legacy extension prompt on load.
 - Refuses to inject any outline whose `version` is not `2`.
 - Adds runtime handshake `planner_version=1.2.0` to the injected tag.
 - Keeps canon protagonist encounters out of `objective_locked`.
+
+
+## v1.3.0
+- Current explicit user intent is not converted into a conditional obstacle thread.
+- No invented travel/booking/legal/account/NPC-veto friction without established facts.
+- Conditional gates must be grounded in existing world state.

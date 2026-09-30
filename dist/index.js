@@ -1,7 +1,7 @@
 (async () => {
   'use strict';
 
-  const VERSION = '1.2.0';
+  const VERSION = '1.3.0';
   const SCRIPT_KEY = '__MIEMIE_FUTURE_PLANNER_EXTERNAL__';
   const BUTTON_NAME = 'Miemie Future Planner';
   const STORAGE_KEY = 'miemie_future_planner_external_config_v1';
@@ -50,13 +50,22 @@ QUY TẮC BẮT BUỘC — ƯU TIÊN CAO NHẤT:
 - Một NPC cụ thể chủ động tiến tới <user> do dấu vết/hành động của <user> luôn là CONDITIONAL, vì nếu <user> đổi vị trí, che dấu vết hoặc rời khu vực thì cuộc tiếp xúc có thể không xảy ra.
 - Nếu một event có tên dạng ‘Gặp X’, ‘X tiếp cận <user>’, ‘X điều tra <user>’, ‘X bảo vệ <user>’ thì mặc định loại khỏi OBJECTIVE_LOCKED, bất kể canon từng xảy ra thế nào.
 
-2. CONDITIONAL PHẢI THỰC SỰ CÓ THỂ BỊ HỦY
+2. CURRENT USER INTENT KHÔNG PHẢI CONDITIONAL PLOT THREAD
+- Hành động/mục tiêu mà <user> vừa explicit xác lập ở lượt hiện tại là CURRENT INTENT, không phải event để planner tự nghĩ chướng ngại.
+- Không tạo CONDITIONAL có event chính là: <user> đi tới đâu, đặt vé, gọi điện, hỏi NPC, mua thứ bình thường, rời nơi hiện tại, hoặc thao tác user vừa ra lệnh.
+- Planner chỉ theo dõi HẬU QUẢ NGOẠI CẢNH sau khi current intent bắt đầu, nếu hậu quả đó thực sự đáng theo dõi.
+- Cấm phát minh blocker để "làm logic": hết vé, không có chuyến, bảo trì, luật cấm, tài khoản hạn chế, NPC can thiệp, thiếu tiền, lỗi hệ thống, thời tiết xấu, phải xác nhận lại... nếu state chưa established fact đó.
+- activation/cancel/downgrade/escalation chỉ được lấy từ FACT/cơ chế đã thiết lập, không phải nơi brainstorming trở ngại.
+- Current intent đời thường khả thi và không có external consequence đáng kể => KHÔNG tạo tuyến.
+- NPC có thể phản đối nếu hợp tính cách/quyền lợi, nhưng planner không biến phản đối thành veto nếu NPC không có cơ chế ngăn.
+
+3. CONDITIONAL PHẢI THỰC SỰ CÓ THỂ BỊ HỦY
 - CONDITIONAL sinh từ hành động, quan hệ, hiểu lầm, lợi ích hoặc xung đột có thể thay đổi.
 - Phải có activation_conditions và cancel_conditions; nếu thích hợp thì có downgrade_conditions.
 - Khi điều kiện hủy đã thực sự xảy ra, retire tuyến đó. Tuyệt đối không bịa “ngoài mặt hòa giải nhưng trong lòng vẫn...” chỉ để cứu event.
 - Mọi bước leo thang phải có escalation_gate. Không nhảy từ chuyện cá nhân sang chiến tranh/tận thế nếu không tồn tại cơ chế độc lập tương ứng.
 
-3. DẤU HIỆU KÍN — MẶC ĐỊNH LÀ KHÔNG CÀI
+4. DẤU HIỆU KÍN — MẶC ĐỊNH LÀ KHÔNG CÀI
 - subtle_sign_candidates được phép là [] và đây là lựa chọn mặc định nếu không có chi tiết thật sự tự nhiên.
 - Dấu hiệu phải là một dữ kiện cảm giác/đời thường nhỏ, có thể bị bỏ qua hoàn toàn khi đọc lần đầu và KHÔNG tự mang ý nghĩa “đang có chuyện”.
 - Dấu hiệu không được nêu tên tác nhân/sự kiện tương lai, không được chứa đặc điểm nhận dạng quá đặc thù đủ để đoán ra tác nhân.
@@ -65,17 +74,17 @@ QUY TẮC BẮT BUỘC — ƯU TIÊN CAO NHẤT:
 - Nếu một dấu hiệu chỉ có tác dụng khi narrator phải giải thích nó liên quan tới event tương lai, đó là dấu hiệu KHÔNG HỢP LỆ.
 - Ví dụ hợp lệ hơn: một hóa đơn bị trì hoãn, lịch trực đổi người, một quầy hàng đóng sớm, dấu bánh xe mới trên đường, một căn phòng vốn sáng nay nay tắt đèn — nhưng chỉ khi những chi tiết đó thật sự có đường nhân quả với outline và hợp cảnh hiện tại.
 
-4. QUY MÔ + NPC LIÊN QUAN
+5. QUY MÔ + NPC LIÊN QUAN
 - Mọi tuyến phải có nguyên nhân, phạm vi và NPC/tổ chức liên quan hợp lý.
 - NPC chỉ tham gia khi có đường thông tin/lợi ích/nghĩa vụ/quan hệ thật sự.
 - Không kéo NPC canon nổi tiếng vào chỉ vì họ nổi tiếng hoặc vì muốn tăng độ lớn câu chuyện.
 - Ưu tiên cập nhật tuyến cũ hơn là tạo tuyến mới. Tối đa 6 tuyến hoạt động, không cần đủ số lượng.
 
-5. KHÔNG SUY LUẬN THAY <user>
+6. KHÔNG SUY LUẬN THAY <user>
 - Không ghi “<user> sẽ...”, “<user> nhận ra...”, “<user> quyết định...”, “<user> chắc chắn...”.
 - Nếu một nhánh phụ thuộc <user>, chỉ được mô tả bằng điều kiện khách quan: “Nếu <user> làm X thì...”.
 
-6. CHỈ XUẤT JSON HỢP LỆ, KHÔNG MARKDOWN, KHÔNG GIẢI THÍCH NGOÀI JSON.
+7. CHỈ XUẤT JSON HỢP LỆ, KHÔNG MARKDOWN, KHÔNG GIẢI THÍCH NGOÀI JSON.
 
 SCHEMA:
 {
@@ -308,7 +317,7 @@ SCHEMA:
       '=== PREVIOUS FUTURE OUTLINE ===', previous ? JSON.stringify(previous) : '(none)',
       '=== RECENT CHAT ===', recent || '(empty)',
       '=== TASK ===',
-      'Update the private future outline from the current state. Preserve valid old threads, retire invalidated conditional threads, and add only well-supported new threads. Return only JSON following the schema.',
+      'Update the private future outline from the current state. Preserve valid old threads, retire invalidated conditional threads, and add only well-supported new threads. Treat the newest explicit user action/goal as CURRENT INTENT, not as a conditional event to obstruct; do not invent blockers, reconfirmation, cancellation conditions, or friction unless already established by current world state. Return only JSON following the schema.',
     ].filter(Boolean).join('\n\n');
   }
 
@@ -476,7 +485,8 @@ ${JSON.stringify(outline)}
 6. A sign must be written only as a literal mundane detail. Do not identify its future actor/event, do not explain why it matters, do not add narrator emphasis, and do not infer <user>'s reaction.
 7. Never turn next_hidden_step into an on-screen fact until it has actually occurred and has a valid information/causal path into the current scene.
 8. Other reasoning modules (causality, butterfly effect, world log, NPC reasoning) MUST NOT introduce a named future NPC/event absent from this external outline. Canon references cannot create a new future thread.
-9. Before writing story_scene, silently delete any planned future encounter inferred only from canon or from protagonist-centric convenience.
+9. The newest explicit user action/goal is CURRENT INTENT, not an obstacle seed. Do not invent blockers, reconfirmation, NPC veto, travel restrictions, outages, fees, missing routes, or other friction unless an established fact already supports it.
+10. Before writing story_scene, silently delete any planned future encounter inferred only from canon or from protagonist-centric convenience.
 </external_future_outline_lock>` : '';
     // Strict mode always injects nearest to generation; old saved depth settings cannot weaken the lock.
     await ctx.setExtensionPrompt(EXT_PROMPT_ID, content, 1, 0, false, 0);
