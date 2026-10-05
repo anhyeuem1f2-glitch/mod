@@ -1,0 +1,7 @@
+Miemie Future Planner v1.8.0
+outline_schema=4
+storage=branch_store_v1
+BUILD=BRANCH_SAFE_REROLL_2026-10-05
+reroll_policy=FRESH_FROM_ACCEPTED_PARENT
+reload_policy=NO_AUTO_STALE_INJECTION
+SHA256=f69ac7fa408b663b14ba4e9f6db553024b7bd012cf8d3f16262cd9c5685d60e2

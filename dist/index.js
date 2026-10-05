@@ -1,15 +1,15 @@
 (async () => {
   'use strict';
 
-  const VERSION = '1.7.0';
-  const BUILD_MARKER = 'EARLY_SCENE_SEED_SCHEMA4_2026-10-05';
+  const VERSION = '1.8.0';
+  const BUILD_MARKER = 'BRANCH_SAFE_REROLL_2026-10-05';
   const SCRIPT_KEY = '__MIEMIE_FUTURE_PLANNER_EXTERNAL__';
   const BUTTON_NAME = 'Miemie Future Planner';
   const STORAGE_KEY = 'miemie_future_planner_external_config_v1';
-  const META_KEY = '__miemie_future_outline_v4';
-  const LEGACY_META_KEYS = ['__miemie_future_outline_v1', '__miemie_future_outline_v2', '__miemie_future_outline_v3'];
-  const EXT_PROMPT_ID = 'miemie_external_future_outline_v4';
-  const LEGACY_EXT_PROMPT_IDS = ['miemie_external_future_outline_v1', 'miemie_external_future_outline_v2', 'miemie_external_future_outline_v3'];
+  const META_KEY = '__miemie_future_branch_store_v1';
+  const LEGACY_META_KEYS = ['__miemie_future_outline_v1', '__miemie_future_outline_v2', '__miemie_future_outline_v3', '__miemie_future_outline_v4'];
+  const EXT_PROMPT_ID = 'miemie_external_future_outline_v5';
+  const LEGACY_EXT_PROMPT_IDS = ['miemie_external_future_outline_v1', 'miemie_external_future_outline_v2', 'miemie_external_future_outline_v3', 'miemie_external_future_outline_v4'];
   const UI_ID = 'mfp-external-ui-v1';
 
   // Tavern Helper scripts run in a background iframe. UI must be mounted into
@@ -227,22 +227,155 @@ Không markdown. Không giải thích ngoài JSON.`
     } catch (_) { return ''; }
   }
 
-  function getSavedEnvelope(ctx = stContext()) {
-    return ctx?.chatMetadata?.[META_KEY] || null;
+  function shortHash(input) {
+    let h1 = 0xdeadbeef ^ 0, h2 = 0x41c6ce57 ^ 0;
+    const s = String(input || '');
+    for (let i = 0; i < s.length; i++) {
+      const ch = s.charCodeAt(i);
+      h1 = Math.imul(h1 ^ ch, 2654435761);
+      h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return ((h2 >>> 0).toString(36) + (h1 >>> 0).toString(36)).slice(0, 14);
   }
 
-  function getSavedOutline(ctx = stContext()) {
-    const value = getSavedEnvelope(ctx);
-    if (!value) return null;
-    let outline = null;
-    if (value.outline && typeof value.outline === 'object') outline = value.outline;
-    else if (typeof value === 'object') outline = value;
-    else if (typeof value === 'string') {
-      try { outline = JSON.parse(value); } catch (_) { outline = null; }
+  function messageBranchToken(m, i) {
+    const role = m?.is_user ? 'U' : (m?.is_system ? 'S' : 'A');
+    const swipe = Number.isInteger(m?.swipe_id) ? m.swipe_id : -1;
+    const mes = stripPrivateBlocks(String(m?.mes || ''));
+    return `${i}:${role}:${swipe}:${shortHash(mes)}:${mes.length}`;
+  }
+
+  function branchKeyFromMessages(messages) {
+    const arr = Array.isArray(messages) ? messages : [];
+    return `b${arr.length}_${shortHash(arr.map(messageBranchToken).join('|'))}`;
+  }
+
+  function latestUserIndex(messages) {
+    for (let i = (messages?.length || 0) - 1; i >= 0; i--) {
+      if (messages[i]?.is_user) return i;
     }
-    // Fail closed: schema v1 / malformed outlines are never injected.
-    if (!outline || Number(outline.version) !== 4) return null;
-    return outline;
+    return -1;
+  }
+
+  function userTurnId(messages) {
+    const i = latestUserIndex(messages);
+    if (i < 0) return 'turn:none';
+    return `turn:${i}:${shortHash(String(messages[i]?.mes || ''))}`;
+  }
+
+  function parentBranchKey(messages) {
+    const i = latestUserIndex(messages);
+    if (i < 0) return branchKeyFromMessages([]);
+    return branchKeyFromMessages(messages.slice(0, i));
+  }
+
+  function isRerollType(type) {
+    const t = String(type || '').toLowerCase();
+    return t.includes('swipe') || t.includes('regenerate');
+  }
+
+  function isContinueType(type) {
+    return String(type || '').toLowerCase().includes('continue');
+  }
+
+  function isQuietLikeType(type) {
+    const t = String(type || '').toLowerCase();
+    return t.includes('quiet') || t.includes('impersonate');
+  }
+
+  function generationBaseMessages(ctx, type = '', { manual = false } = {}) {
+    const chat = Array.isArray(ctx?.chat) ? ctx.chat.slice() : [];
+    if (manual) return chat;
+    if (isRerollType(type) && chat.length && !chat[chat.length - 1]?.is_user) {
+      chat.pop(); // rejected/selected assistant swipe is not reroll input
+    }
+    return chat;
+  }
+
+  function emptyBranchStore() {
+    return { storeVersion: 1, outlineSchema: 4, candidates: {}, heads: {}, updatedAt: null };
+  }
+
+  function getBranchStore(ctx = stContext()) {
+    const raw = ctx?.chatMetadata?.[META_KEY];
+    if (!raw || typeof raw !== 'object' || Number(raw.storeVersion) !== 1) return emptyBranchStore();
+    return {
+      storeVersion: 1,
+      outlineSchema: 4,
+      candidates: raw.candidates && typeof raw.candidates === 'object' ? raw.candidates : {},
+      heads: raw.heads && typeof raw.heads === 'object' ? raw.heads : {},
+      updatedAt: raw.updatedAt || null,
+    };
+  }
+
+  function validOutline(outline) {
+    return outline && typeof outline === 'object' && Number(outline.version) === 4;
+  }
+
+  function pruneBranchStore(store) {
+    const candidates = Object.entries(store.candidates || {})
+      .filter(([,v]) => validOutline(v?.outline))
+      .sort((a,b) => String(b[1]?.updatedAt || '').localeCompare(String(a[1]?.updatedAt || '')))
+      .slice(0, 18);
+    store.candidates = Object.fromEntries(candidates);
+    const allowed = new Set(Object.keys(store.candidates));
+    const heads = Object.entries(store.heads || {})
+      .filter(([,v]) => v?.baseKey && allowed.has(v.baseKey))
+      .sort((a,b) => String(b[1]?.updatedAt || '').localeCompare(String(a[1]?.updatedAt || '')))
+      .slice(0, 32);
+    store.heads = Object.fromEntries(heads);
+    store.updatedAt = new Date().toISOString();
+    return store;
+  }
+
+  async function saveBranchStore(ctx, store) {
+    if (!ctx?.chatMetadata) return;
+    ctx.chatMetadata[META_KEY] = pruneBranchStore(store);
+    await ctx.saveMetadata?.();
+  }
+
+  function candidateForBase(ctx, baseKey) {
+    const c = getBranchStore(ctx).candidates?.[baseKey];
+    return validOutline(c?.outline) ? c : null;
+  }
+
+  function headForFullBranch(ctx, fullKey) {
+    const store = getBranchStore(ctx);
+    const h = store.heads?.[fullKey];
+    if (!h?.baseKey) return null;
+    const c = store.candidates?.[h.baseKey];
+    return validOutline(c?.outline) ? { ...c, baseKey:h.baseKey, fullKey } : null;
+  }
+
+  function outlineForCurrentBranch(ctx = stContext()) {
+    const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
+    if (!chat.length) return null;
+    const last = chat[chat.length - 1];
+    if (last?.is_user) return candidateForBase(ctx, branchKeyFromMessages(chat));
+    return headForFullBranch(ctx, branchKeyFromMessages(chat));
+  }
+
+  function branchMetaForCurrent(ctx = stContext()) {
+    const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
+    if (!chat.length) return null;
+    const last = chat[chat.length - 1];
+    if (last?.is_user) {
+      const baseKey = branchKeyFromMessages(chat);
+      const c = candidateForBase(ctx, baseKey);
+      return c ? { ...c, baseKey, source:'candidate' } : null;
+    }
+    return headForFullBranch(ctx, branchKeyFromMessages(chat));
+  }
+
+  function parentOutlineForBase(ctx, baseMessages) {
+    const store = getBranchStore(ctx);
+    const pKey = parentBranchKey(baseMessages);
+    const h = store.heads?.[pKey];
+    if (!h?.baseKey) return null;
+    const c = store.candidates?.[h.baseKey];
+    return validOutline(c?.outline) ? c.outline : null;
   }
 
   async function clearLegacyState(ctx = stContext()) {
@@ -266,10 +399,10 @@ Không markdown. Không giải thích ngoài JSON.`
     } catch (_) {}
   }
 
-  async function activeWorldInfoSnapshot(ctx) {
+  async function activeWorldInfoSnapshot(ctx, messagesOverride = null) {
     if (!ctx?.getWorldInfoPrompt) return '';
     try {
-      const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
+      const chat = Array.isArray(messagesOverride) ? messagesOverride : (Array.isArray(ctx.chat) ? ctx.chat : []);
       const n = Math.max(8, Math.min(40, Number(config.historyMessages) || 18));
       const source = chat.slice(-n)
         .map(m => `${m.name || (m.is_user ? ctx.name1 : ctx.name2) || ''}: ${stripPrivateBlocks(m.mes || '')}`)
@@ -277,7 +410,7 @@ Không markdown. Không giải thích ngoài JSON.`
       const wi = await ctx.getWorldInfoPrompt(source, Number(ctx.maxContext) || 200000, true);
       if (!wi || typeof wi !== 'object') return '';
       const chunks = [];
-      for (const key of ['worldInfoBefore', 'worldInfoAfter', 'anBefore', 'anAfter', 'worldInfoString', 'worldInfoExamples']) {
+      for (const key of ['worldInfoBefore','worldInfoAfter','anBefore','anAfter','worldInfoString','worldInfoExamples']) {
         const v = wi[key];
         if (typeof v === 'string' && v.trim()) chunks.push(`[${key}]\n${v.trim()}`);
       }
@@ -291,25 +424,40 @@ Không markdown. Không giải thích ngoài JSON.`
     } catch (_) { return ''; }
   }
 
-  async function plannerInput(ctx) {
-    const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
+  async function plannerInput(ctx, opts = {}) {
+    const chat = Array.isArray(opts.baseMessages) ? opts.baseMessages : (Array.isArray(ctx?.chat) ? ctx.chat : []);
     const n = Math.max(4, Math.min(40, Number(config.historyMessages) || 18));
     const recent = chat.slice(-n).map((m, i) => {
       const role = m.is_user ? 'USER' : (m.is_system ? 'SYSTEM' : 'ASSISTANT');
       return `[${role} ${chat.length - n + i}]\n${compactMessage(m.mes || '')}`;
     }).join('\n\n');
-    const previous = getSavedOutline(ctx);
-    const wi = await activeWorldInfoSnapshot(ctx);
+    const previous = validOutline(opts.previousOutline) ? opts.previousOutline : null;
+    const wi = await activeWorldInfoSnapshot(ctx, chat);
+
+    const modeText = opts.isReroll
+      ? `REROLL/REGENERATE OF THE SAME USER TURN
+turn_id=${opts.turnId}
+branch_base=${opts.baseKey}
+- The rejected assistant swipe is intentionally absent from selected-branch chat.
+- Discard every event/result/choice/seed-progress assumption that exists only because of that rejected swipe.
+- The latest USER message is the SAME turn being regenerated, not a new choice after the rejected result.
+- The parent outline below comes from the accepted branch BEFORE this user turn, never from the rejected candidate.`
+      : `NORMAL GENERATION
+turn_id=${opts.turnId || userTurnId(chat)}
+branch_base=${opts.baseKey || branchKeyFromMessages(chat)}
+- Use only the currently selected visible branch.`;
+
     return [
+      '=== BRANCH / TURN IDENTITY ===', modeText,
       '=== CHARACTER / SETTING SNAPSHOT ===',
       currentCharacterSnapshot(ctx) || '(none)',
       ctx?.chatMetadata?.scenario ? `Chat scenario: ${String(ctx.chatMetadata.scenario).slice(0, 6000)}` : '',
       ctx?.chatMetadata?.persona ? `User persona: ${String(ctx.chatMetadata.persona).slice(0, 6000)}` : '',
       '=== ACTIVE WORLD INFO / LOREBOOK ===', wi || '(none activated)',
-      '=== PREVIOUS FUTURE OUTLINE ===', previous ? JSON.stringify(previous) : '(none)',
-      '=== RECENT CHAT ===', recent || '(empty)',
+      '=== ACCEPTED PARENT OUTLINE ===', previous ? JSON.stringify(previous) : '(none)',
+      '=== SELECTED-BRANCH RECENT CHAT ===', recent || '(empty)',
       '=== TASK ===',
-      `Update schema-v4 planner state. Apply newest user ESTABLISH first. Then inspect active NPC/card/worldbook/canon processes. Select scene_seed for the NEXT generation. If a valid current beat exists, especially during travel/filler/open-direction or when an active NPC naturally initiates interaction, use MANDATORY_EARLY and make entry_action concrete enough to happen in the first 1-2 prose paragraphs. Never put user ability activation/effects or narrator praise into the seed. Future outline remains separate. Return JSON only.`,
+      `Update schema-v4 planner state for THIS branch/turn only. Apply newest user ESTABLISH first. Select scene_seed for the next main generation. On reroll, never import the rejected swipe and never reinterpret the repeated latest user input as a new post-result decision. Return JSON only.`,
     ].filter(Boolean).join('\n\n');
   }
 
@@ -472,13 +620,13 @@ Không markdown. Không giải thích ngoài JSON.`
     return [...new Set(list.map(x => typeof x === 'string' ? x : (x?.id || x?.name || '')).filter(Boolean))].slice(0, 500);
   }
 
-  async function callPlanner(ctx) {
+  async function callPlanner(ctx, opts = {}) {
     if (!config.model) throw new Error('Chưa chọn model phụ');
     const body = {
       model: config.model,
       messages: [
         { role: 'system', content: PLANNER_SYSTEM },
-        { role: 'user', content: await plannerInput(ctx) },
+        { role: 'user', content: await plannerInput(ctx, opts) },
       ],
       temperature: Math.max(0, Math.min(2, Number(config.temperature) || 0.2)),
       max_tokens: Math.max(256, Math.min(8192, Number(config.maxTokens) || 1400)),
@@ -490,7 +638,7 @@ Không markdown. Không giải thích ngoài JSON.`
     return sanitizeOutline(parseJsonText(extractModelText(payload)), ctx);
   }
 
-  async function injectOutline(ctx, outline) {
+  async function injectOutline(ctx, outline, meta = {}) {
     if (!ctx?.setExtensionPrompt) return;
     try {
       for (const id of LEGACY_EXT_PROMPT_IDS) await ctx.setExtensionPrompt(id, '', 1, 0, false, 0);
@@ -498,78 +646,149 @@ Không markdown. Không giải thích ngoài JSON.`
 
     if (!outline || Number(outline.version) !== 4) outline = null;
     const seed = outline?.scene_seed || { mode:'NONE' };
+    const baseKey = String(meta.baseKey || '');
+    const turnId = String(meta.turnId || '');
+    const attempt = Number(meta.attempt || 0);
+    const reroll = meta.isReroll ? 'true' : 'false';
+    const attrs = ` branch_key="${baseKey}" turn_id="${turnId}" attempt="${attempt}" reroll="${reroll}"`;
 
-    const seedContent = outline ? `<external_scene_seed authority="CURRENT_WORLD_BEAT" mode="${seed.mode}" planner_version="${VERSION}">
+    const seedContent = outline ? `<external_scene_seed authority="CURRENT_WORLD_BEAT" mode="${seed.mode}" planner_version="${VERSION}"${attrs}>
 [PRIVATE EARLY-SCENE DIRECTIVE — DO NOT REVEAL AS META]
 ${JSON.stringify(seed)}
 </external_scene_seed>` : '';
 
-    const content = outline ? `<external_future_outline authority="EXCLUSIVE" mode="EXTERNAL" version="4" planner_version="${VERSION}">
+    const content = outline ? `<external_branch_guard planner_version="${VERSION}"${attrs}>
+[SELECTED-BRANCH TRUTH]
+- This state belongs ONLY to the currently selected SillyTavern branch and turn.
+- Rejected/unselected swipes are NON-CANON.
+- On reroll=true, the newest USER input is the SAME turn being regenerated, not a new decision after the rejected response.
+- If a recent table/memory/wlog cache claims an event happened but the selected recent chat branch does not support it, treat that cache entry as stale swipe residue.
+- Never say "your previous choice" or "chapter-one choice" solely because a rejected swipe/cache remembers it.
+</external_branch_guard>
+<external_future_outline authority="EXCLUSIVE" mode="EXTERNAL" version="4" planner_version="${VERSION}"${attrs}>
 [PRIVATE PLANNER STATE — NEVER REVEAL, SUMMARIZE, OR REWRITE TO USER]
 ${JSON.stringify(outline)}
 </external_future_outline>
 ${seedContent}
 <external_future_outline_lock>
-[RUNTIME HANDSHAKE: planner=${VERSION}; schema=4]
-1. Future outline governs FUTURE continuity; scene seed governs a CURRENT WORLD/NPC beat.
-2. If <external_scene_seed mode="MANDATORY_EARLY">:
-   - execute event/entry_action in the FIRST 1-2 prose paragraphs or equivalent first scene beat;
-   - do NOT save it for the ending;
-   - after seed, develop the scene from it through NPC/world interaction;
-   - stop only at stop_boundary when a real user decision/knowledge/ability boundary is reached.
-3. If interaction_vector=NPC_INITIATES, let the NPC actually act/speak as appropriate; do not summarize an entire conversation through narration.
-4. No dialogue quota. Speech emerges from NPC goals/personality/context.
-5. This seed NEVER authorizes <user> ability activation/effects, hidden knowledge, status flex, or narrator praise.
-6. If seed mode=NONE, card/worldbook/world-backbone current-event directives remain allowed. Planner does not freeze world agency.
-7. next_hidden_step is future-only. subtle signs are only for not-yet-current events.
-8. USER AUTHORITY remains highest for user-established facts. The seed controls WORLD/NPC entry, not major user decisions.
-9. Canon encounters supported by current route/time/location + intact prerequisites are valid.
-10. In <future_event_planning_protocol>, skip INTERNAL outline and output only <future_outline>[Mode]: EXTERNAL</future_outline>.
+[RUNTIME HANDSHAKE: planner=${VERSION}; schema=4; branch_safe_reroll=true]
+1. Future outline governs FUTURE continuity; scene seed governs CURRENT WORLD/NPC entry.
+2. The selected visible branch outranks stale recent cache/table/memory residue from rejected swipes.
+3. reroll=true means rejected assistant swipes DO NOT EXIST for continuity.
+4. MANDATORY_EARLY executes in the first 1-2 prose paragraphs, then the scene develops from it.
+5. NPC_INITIATES means the NPC may actually act/speak; do not summarize the whole exchange.
+6. No dialogue quota.
+7. Scene seed never authorizes user ability activation/effects, hidden knowledge, status flex, or narrator praise.
+8. seed=NONE does not freeze card/worldbook/world-backbone agency.
+9. next_hidden_step remains future-only.
+10. USER AUTHORITY remains highest for user-established facts.
+11. Canon encounters remain valid when route/time/location + prerequisites intersect.
+12. Skip competing INTERNAL future outline; output <future_outline>[Mode]: EXTERNAL</future_outline>.
 </external_future_outline_lock>` : '';
 
     await ctx.setExtensionPrompt(EXT_PROMPT_ID, content, 1, 0, false, 0);
   }
 
-  async function persistOutline(ctx, outline) {
-    if (!ctx?.chatMetadata) return;
-    ctx.chatMetadata[META_KEY] = {
+  let plannerEpoch = 0;
+
+  async function persistCandidate(ctx, meta, outline) {
+    if (!ctx?.chatMetadata || !validOutline(outline)) return null;
+    const store = getBranchStore(ctx);
+    const old = store.candidates?.[meta.baseKey];
+    const attempt = Number(old?.attempt || 0) + 1;
+    store.candidates[meta.baseKey] = {
       outline,
+      baseKey: meta.baseKey,
+      parentKey: meta.parentKey,
+      turnId: meta.turnId,
+      attempt,
+      isReroll: !!meta.isReroll,
       updatedAt: new Date().toISOString(),
       model: config.model,
       plannerVersion: VERSION,
     };
-    await ctx.saveMetadata?.();
+    await saveBranchStore(ctx, store);
+    return store.candidates[meta.baseKey];
   }
 
-  async function runPlanner({ manual = false } = {}) {
+  async function recordCurrentAssistantBranch(ctx = stContext()) {
+    if (!ctx?.chatMetadata || !Array.isArray(ctx.chat) || !ctx.chat.length) return;
+    const chat = ctx.chat;
+    const last = chat[chat.length - 1];
+    if (last?.is_user || last?.is_system) return;
+    const fullKey = branchKeyFromMessages(chat);
+    const baseKey = branchKeyFromMessages(chat.slice(0, -1));
+    const store = getBranchStore(ctx);
+    if (!validOutline(store.candidates?.[baseKey]?.outline)) return;
+    store.heads[fullKey] = {
+      baseKey,
+      updatedAt: new Date().toISOString(),
+      swipeId: Number.isInteger(last?.swipe_id) ? last.swipe_id : -1,
+      messageIndex: chat.length - 1,
+    };
+    await saveBranchStore(ctx, store);
+  }
+
+  async function runPlanner({ manual = false, generationType = '' } = {}) {
     if (busy) return;
     const ctx = stContext();
     if (!ctx) { setStatus('Không lấy được SillyTavern context'); return; }
     if (!config.enabled && !manual) { await injectOutline(ctx, null); return; }
+
+    const isReroll = !manual && isRerollType(generationType);
+    const baseMessages = generationBaseMessages(ctx, generationType, { manual });
+    const baseKey = branchKeyFromMessages(baseMessages);
+    const parentKey = parentBranchKey(baseMessages);
+    const turnId = userTurnId(baseMessages);
+    const previousOutline = parentOutlineForBase(ctx, baseMessages);
+    const existingSameBase = candidateForBase(ctx, baseKey);
+    const epoch = ++plannerEpoch;
+
     if (!config.baseUrl || !config.model) {
-      setStatus('Thiếu Base URL hoặc model — không gọi model phụ');
-      await injectOutline(ctx, getSavedOutline(ctx));
-      return;
-    }
-    busy = true;
-    setStatus('Đang tính đại cương tương lai…');
-    try {
-      const outline = await callPlanner(ctx);
-      await persistOutline(ctx, outline);
-      await injectOutline(ctx, outline);
-      setStatus(`Đã cập nhật: seed=${outline.scene_seed?.mode || 'NONE'} · ${outline.objective_locked.length} khách quan · ${outline.conditional.length} điều kiện`);
-      renderPreview();
-    } catch (e) {
-      const old = getSavedOutline(ctx);
-      if (old) {
-        await injectOutline(ctx, old);
-        setStatus(`Model phụ lỗi; giữ outline cũ. ${e?.message || e}`);
+      if (existingSameBase && !isReroll) {
+        await injectOutline(ctx, existingSameBase.outline, { ...existingSameBase, baseKey, turnId, isReroll:false });
+        setStatus('Thiếu Base URL/model; chỉ dùng candidate của ĐÚNG branch hiện tại.');
       } else {
         await injectOutline(ctx, null);
-        setStatus(`Model phụ lỗi; không có outline để inject. ${e?.message || e}`);
+        setStatus(isReroll
+          ? 'Reroll: thiếu Base URL/model; đã fail-closed, KHÔNG tái dùng candidate của swipe bị loại.'
+          : 'Thiếu Base URL/model; branch hiện tại chưa có candidate.');
+      }
+      return;
+    }
+
+    busy = true;
+    setStatus(isReroll ? `Reroll-safe: tính fresh ${turnId}` : `Đang tính đại cương ${turnId}`);
+    try {
+      const outline = await callPlanner(ctx, {
+        baseMessages, previousOutline, baseKey, parentKey, turnId, isReroll,
+      });
+
+      const liveCtx = stContext();
+      if (epoch !== plannerEpoch || !liveCtx) return;
+      const liveBaseKey = branchKeyFromMessages(generationBaseMessages(liveCtx, generationType, { manual }));
+      if (liveBaseKey !== baseKey) {
+        setStatus('Bỏ kết quả planner: branch đã đổi trong lúc model phụ đang chạy.');
+        return;
+      }
+
+      const saved = await persistCandidate(liveCtx, { baseKey, parentKey, turnId, isReroll }, outline);
+      await injectOutline(liveCtx, outline, {
+        baseKey, parentKey, turnId, isReroll, attempt:saved?.attempt || 1,
+      });
+      setStatus(`${isReroll ? 'REROLL FRESH' : 'Đã cập nhật'} · ${turnId} · attempt ${saved?.attempt || 1} · seed=${outline.scene_seed?.mode || 'NONE'}`);
+      renderPreview();
+    } catch (e) {
+      if (!isReroll && existingSameBase?.outline) {
+        await injectOutline(ctx, existingSameBase.outline, { ...existingSameBase, baseKey, turnId, isReroll:false });
+        setStatus(`Model phụ lỗi; chỉ fallback candidate CÙNG branch. ${e?.message || e}`);
+      } else {
+        await injectOutline(ctx, null);
+        setStatus(`${isReroll ? 'Reroll lỗi; candidate swipe cũ đã bị loại và KHÔNG fallback.' : 'Model phụ lỗi; không có candidate cùng branch.'} ${e?.message || e}`);
       }
     } finally { busy = false; refreshRunButtons(); }
   }
+
 
   function esc(s) {
     return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
@@ -610,7 +829,7 @@ ${seedContent}
       <div class="mfp-row"><div><label>Timeout (ms)</label><input id="mfp-timeout" type="number" min="10000" max="180000" value="${esc(config.timeoutMs)}"></div><div><label>Strict lock</label><input value="ON · depth 0" disabled></div><div></div></div>
       <div class="mfp-actions"><button id="mfp-save">Lưu cấu hình</button><button id="mfp-test">Test + Load model</button><button id="mfp-run">Tính đại cương ngay</button><button id="mfp-clear">Xóa outline chat này</button></div>
       <div id="mfp-status" class="mfp-status"></div>
-      <div class="mfp-note">Planner chỉ lập đại cương kín. Nếu endpoint chặn CORS, hãy dùng URL proxy có cho phép browser request. Outline được lưu theo từng chat. Schema v4 inject ở depth 0. MANDATORY_EARLY là scene seed phải vào sớm, không được giữ tới đoạn kết.</div>
+      <div class="mfp-note">Planner chỉ lập đại cương kín. Nếu endpoint chặn CORS, hãy dùng URL proxy có cho phép browser request. Planner state lưu theo từng branch/swipe. Reroll tính fresh từ accepted parent; reload không resurrect outline chung cũ. Schema v4, depth 0.</div>
     </section>
     <section class="mfp-section">
       <h3>Đại cương hiện tại</h3>
@@ -631,7 +850,7 @@ ${seedContent}
     q('#mfp-run').onclick = async () => { saveConfig(readUiConfig()); await runPlanner({ manual: true }); };
     q('#mfp-clear').onclick = clearOutline;
     q('#mfp-refresh').onclick = renderPreview;
-    q('#mfp-copy').onclick = async () => { const out = getSavedOutline(); if (!out) return setStatus('Chưa có outline để copy'); try { await navigator.clipboard.writeText(JSON.stringify(out, null, 2)); setStatus('Đã copy outline JSON'); } catch (_) { setStatus('Không copy được qua clipboard API'); } };
+    q('#mfp-copy').onclick = async () => { const out = branchMetaForCurrent()?.outline || null; if (!out) return setStatus('Branch hiện tại chưa có outline để copy'); try { await navigator.clipboard.writeText(JSON.stringify(out, null, 2)); setStatus('Đã copy outline JSON'); } catch (_) { setStatus('Không copy được qua clipboard API'); } };
     q('#mfp-enabled').onchange = () => updateStateBadge();
     renderPreview();
     renderStatus();
@@ -671,11 +890,16 @@ ${seedContent}
   function renderPreview() {
     if (!overlay) return;
     const q = s => overlay.querySelector(s);
-    const outline = getSavedOutline();
-    const env = getSavedEnvelope();
+    const env = branchMetaForCurrent();
+    const outline = validOutline(env?.outline) ? env.outline : null;
     if (q('#mfp-preview')) q('#mfp-preview').value = outline ? JSON.stringify(outline, null, 2) : '';
-    if (q('#mfp-meta')) q('#mfp-meta').textContent = env?.updatedAt ? `Cập nhật: ${env.updatedAt} · model: ${env.model || '?'} · planner v${env.plannerVersion || '?'}` : 'Chưa có đại cương lưu trong chat này.';
+    if (q('#mfp-meta')) {
+      q('#mfp-meta').textContent = env
+        ? `Branch ${env.baseKey || '?'} · ${env.turnId || '?'} · attempt ${env.attempt || '?'} · ${env.isReroll ? 'reroll' : 'normal'} · planner v${env.plannerVersion || VERSION}`
+        : 'Branch hiện tại chưa có snapshot. Outline từ branch/swipe khác sẽ không được dùng.';
+    }
   }
+
 
   async function doLoadModels() {
     busy = true; refreshRunButtons(); setStatus('Đang tải danh sách model…');
@@ -692,10 +916,12 @@ ${seedContent}
     const ctx = stContext();
     if (ctx?.chatMetadata) {
       delete ctx.chatMetadata[META_KEY];
+      for (const key of LEGACY_META_KEYS) delete ctx.chatMetadata[key];
       await ctx.saveMetadata?.();
     }
+    plannerEpoch++;
     await injectOutline(ctx, null);
-    setStatus('Đã xóa outline của chat hiện tại');
+    setStatus('Đã xóa toàn bộ planner state của mọi branch trong chat này');
     renderPreview();
   }
 
@@ -771,6 +997,10 @@ ${seedContent}
     const types = ctx?.eventTypes || ctx?.event_types || window.tavern_events || {};
     const genEvent = types.GENERATION_STARTED || types.generation_started || 'generation_started';
     const chatEvent = types.CHAT_CHANGED || types.chat_changed || 'chat_changed';
+    const receivedEvent = types.MESSAGE_RECEIVED || types.message_received || 'message_received';
+    const swipedEvent = types.MESSAGE_SWIPED || types.message_swiped || 'message_swiped';
+    const editedEvent = types.MESSAGE_EDITED || types.message_edited || 'message_edited';
+    const deletedEvent = types.MESSAGE_DELETED || types.message_deleted || 'message_deleted';
 
     const onFn = (eventName, handler) => {
       try {
@@ -792,22 +1022,52 @@ ${seedContent}
       if (dryRun) return;
       config = loadConfig();
       if (!config.enabled) { await injectOutline(stContext(), null); return; }
-      const t = String(type || '').toLowerCase();
-      if (t.includes('swipe') || t.includes('regenerate') || t.includes('quiet') || t.includes('impersonate')) {
-        await injectOutline(stContext(), getSavedOutline());
+
+      if (isQuietLikeType(type)) {
+        await injectOutline(stContext(), null);
         return;
       }
-      await runPlanner();
+
+      if (isContinueType(type)) {
+        const current = outlineForCurrentBranch(stContext());
+        if (current?.outline) await injectOutline(stContext(), current.outline, { ...current, isReroll:false });
+        else await injectOutline(stContext(), null);
+        return;
+      }
+
+      // Normal + Swipe + Regenerate all run planner.
+      // Reroll is fresh from accepted parent; rejected candidate is NOT previous state.
+      await runPlanner({ generationType:type });
     });
 
-    onFn(chatEvent, async () => {
+    onFn(receivedEvent, async () => {
       setTimeout(async () => {
-        config = loadConfig();
-        await injectOutline(stContext(), config.enabled ? getSavedOutline() : null);
+        try { await recordCurrentAssistantBranch(stContext()); } catch (_) {}
         renderPreview();
-      }, 80);
+      }, 0);
+    });
+
+    onFn(swipedEvent, async () => {
+      plannerEpoch++;
+      await injectOutline(stContext(), null);
+      renderPreview();
+    });
+
+    const invalidateOnMutation = async () => {
+      plannerEpoch++;
+      await injectOutline(stContext(), null);
+      renderPreview();
+    };
+    onFn(editedEvent, invalidateOnMutation);
+    onFn(deletedEvent, invalidateOnMutation);
+
+    onFn(chatEvent, async () => {
+      plannerEpoch++;
+      await injectOutline(stContext(), null);
+      setTimeout(() => renderPreview(), 80);
     });
   }
+
 
   async function cleanup() {
     try { removeUi(); } catch (_) {}
@@ -832,9 +1092,9 @@ ${seedContent}
   const hasHelperButton = registerTavernHelperButton();
   if (!hasHelperButton) createFallbackButton();
   registerGenerationEvents();
-  await injectOutline(stContext(), config.enabled ? getSavedOutline() : null);
+  await injectOutline(stContext(), null);
 
-  window[SCRIPT_KEY] = { version: VERSION, open: openUi, run: () => runPlanner({ manual:true }), cleanup, getConfig: () => ({...config}) };
-  try { hostWindow.__MIEMIE_FUTURE_PLANNER_RUNTIME__ = { version: VERSION, schema: 4, loadedAt: new Date().toISOString() }; } catch (_) {}
-  console.info(`[Miemie Future Planner] loaded v${VERSION}; schema=4; UI host=${hostDocument === document ? 'script-frame' : 'parent-document'}`);
+  window[SCRIPT_KEY] = { version: VERSION, open: openUi, run: () => runPlanner({ manual:true, generationType:'manual' }), cleanup, getConfig: () => ({...config}) };
+  try { hostWindow.__MIEMIE_FUTURE_PLANNER_RUNTIME__ = { version: VERSION, schema: 4, branchSafeReroll: true, loadedAt: new Date().toISOString() }; } catch (_) {}
+  console.info(`[Miemie Future Planner] loaded v${VERSION}; schema=4; branch-safe-reroll=ON; UI host=${hostDocument === document ? 'script-frame' : 'parent-document'}`);
 })();
