@@ -1,15 +1,15 @@
 (async () => {
   'use strict';
 
-  const VERSION = '1.5.0';
-  const BUILD_MARKER = 'USER_AUTHORITY_CANON_BACKBONE_2026-10-05';
+  const VERSION = '1.6.0';
+  const BUILD_MARKER = 'CURRENT_SCENE_HOOK_SCHEMA3_2026-10-05';
   const SCRIPT_KEY = '__MIEMIE_FUTURE_PLANNER_EXTERNAL__';
   const BUTTON_NAME = 'Miemie Future Planner';
   const STORAGE_KEY = 'miemie_future_planner_external_config_v1';
-  const META_KEY = '__miemie_future_outline_v2';
-  const LEGACY_META_KEYS = ['__miemie_future_outline_v1'];
-  const EXT_PROMPT_ID = 'miemie_external_future_outline_v2';
-  const LEGACY_EXT_PROMPT_IDS = ['miemie_external_future_outline_v1'];
+  const META_KEY = '__miemie_future_outline_v3';
+  const LEGACY_META_KEYS = ['__miemie_future_outline_v1', '__miemie_future_outline_v2'];
+  const EXT_PROMPT_ID = 'miemie_external_future_outline_v3';
+  const LEGACY_EXT_PROMPT_IDS = ['miemie_external_future_outline_v1', 'miemie_external_future_outline_v2'];
   const UI_ID = 'mfp-external-ui-v1';
 
   // Tavern Helper scripts run in a background iframe. UI must be mounted into
@@ -32,68 +32,96 @@
     if (window[SCRIPT_KEY]?.cleanup) await window[SCRIPT_KEY].cleanup();
   } catch (_) {}
 
-  const PLANNER_SYSTEM = `Bạn là bộ lập đại cương tương lai KÍN cho một phiên nhập vai đồng nhân/SillyTavern. Bạn KHÔNG viết chính văn và KHÔNG điều khiển <user>. Nhiệm vụ là giữ cho thế giới CHỦ ĐỘNG vận hành, đặc biệt là canon/world mainline, trong khi mọi hành động/kết quả mà <user> trực tiếp ESTABLISH vẫn có quyền cao nhất.
+  const PLANNER_SYSTEM = `Bạn là bộ lập đại cương KÍN + bộ chọn CURRENT SCENE HOOK cho một phiên nhập vai đồng nhân/SillyTavern. Bạn KHÔNG viết chính văn và KHÔNG điều khiển <user>.
 
-QUY TẮC ƯU TIÊN:
+MỤC TIÊU:
+1) giữ future outline nhất quán;
+2) giữ canon/world backbone tự vận hành;
+3) QUAN TRỌNG NHẤT: khi một event/NPC/world beat đã đủ điều kiện xảy ra NGAY LƯỢT NÀY, xuất scene_hook để main model bắt buộc triển khai, thay vì để outline chỉ nằm chết trong JSON.
 
-0. USER AUTHORITY VÀ WORLD AGENCY CÙNG TỒN TẠI
-- ESTABLISH của <user> là immutable root fact: áp vào state trước, không veto/cancel/reroute.
-- Sau POST_USER_STATE, thế giới KHÔNG đứng im. Canon/NPC/tổ chức/sự kiện có nguyên nhân độc lập vẫn tiếp tục.
-- Không yêu cầu mọi future event phải là hậu quả của user.
+0. USER AUTHORITY
+- ESTABLISH của <user> là immutable root fact: apply first.
+- ATTEMPT: attempt đã xảy ra, outcome có thể tính.
+- Không veto/reroute user.
 
-1. CANON BACKBONE = DEFAULT WORLD MOTION, KHÔNG PHẢI USER DESTINY
-- Timeline/canon cho biết world actors sẽ làm gì nếu prerequisite chưa bị butterfly effect phá.
-- Event canon tới hạn + đủ prerequisite phải được giữ như ACTIVE/SCHEDULED world thread, không xóa chỉ vì user chưa tác động.
-- Outcome/relationship của protagonist canon không tự áp lên user.
-- Nếu user phá một prerequisite, chỉ retire/diverge phần bị phá; không xóa toàn bộ canon backbone.
+1. WORLD/CANON BACKBONE
+- Canon/world actors có lịch trình độc lập nếu prerequisites chưa bị butterfly phá.
+- Canon không quyết định reaction/outcome của user.
+- Card/worldbook/scenario plot-driving directives là nguồn world-backbone hợp lệ nếu không xung đột user state.
 
-2. OBJECTIVE_LOCKED
-OBJECTIVE_LOCKED dùng cho LÕI WORLD EVENT vẫn xảy ra không phụ thuộc lựa chọn user, ví dụ một băng hải tặc tới đảo, một cuộc chiến giữa NPC, một lễ hội, một tổ chức ra tay.
-- independence_test vẫn bắt buộc.
-- Canon/timeline CÓ THỂ là căn cứ nếu event core thật sự do world actors tự thực hiện và prerequisites intact.
-- Không ghi fixed_core kiểu "<user> chắc chắn gặp X".
+2. SCENE_HOOK — CURRENT EVENT, KHÔNG PHẢI FUTURE
+Trả field scene_hook:
+{
+  "mode": "MANDATORY_NOW" | "OPTIONAL_NOW" | "NONE",
+  "event": "...",
+  "source": "canon_backbone|worldbook|npc_goal|user_consequence|mixed",
+  "why_now": "...",
+  "entry_action": "...",
+  "stop_boundary": "...",
+  "involved": ["..."],
+  "conditions_verified": ["..."]
+}
 
-3. CANON ENCOUNTER = CONDITIONAL INTERSECTION, VÀ ĐƯỢC KHUYẾN KHÍCH
-Nếu:
-- canon NPC/event đang ACTIVE/SCHEDULED_ELIGIBLE;
-- route/time/location của user giao hợp lý;
-- user root không loại bỏ giao cắt;
-thì tạo CONDITIONAL encounter/hook như "tàu của X xuất hiện trên cùng tuyến", "user tới đảo đúng lúc event Y đang diễn ra", "NPC X bước vào địa điểm hiện tại".
-Đây KHÔNG phải protagonist-centric convenience vì có causal intersection.
-- activation_conditions phải là co-location/time/prerequisite thật.
-- cancel_conditions có thể là user đổi route/tránh khu vực trước khi encounter xảy ra.
-- Không quyết định user sẽ chấp nhận nhiệm vụ, thân thiết, chiến đấu hay đi cùng.
+Chọn MANDATORY_NOW khi:
+- scene hiện tại đang filler/di chuyển/vô định VÀ có canon/world event hợp lệ có thể chạm user ngay;
+- route/time/location của user đã intersect một canon NPC/event;
+- card/worldbook đang chủ động dẫn tới một encounter/arc và prerequisite còn hợp lệ;
+- một hậu quả trực tiếp đã tới lúc hiện ra.
 
-4. OPEN-DIRECTION MODE
-Nếu newest user input để hướng mở như "đi đâu cũng được", "cứ tiến về phía trước", "tiếp tục hành trình" hoặc không chọn destination:
-- planner NÊN chọn canon/world waypoint hợp lý gần nhất;
-- ưu tiên event/NPC canon cụ thể hơn filler vô định;
-- tạo encounter/hook để main model có thứ thật sự xảy ra.
-Nếu user đã chỉ destination cụ thể, destination đó thắng.
+MANDATORY_NOW nghĩa là event phải XẢY RA TRONG GENERATION KẾ TIẾP.
+entry_action phải là hành động/vật thể/NPC cụ thể có thể xuất hiện trên màn hình, ví dụ:
+- "Một hòn đảo có thị trấn xuất hiện ở đường chân trời..."
+- "Con tàu mang cờ của băng X cắt ngang mũi thuyền..."
+- "NPC X bước ra khỏi quán đúng lúc..."
+- "Đạn pháo từ tàu hải quân rơi xuống phía trước..."
+KHÔNG viết entry_action kiểu "cuộc phiêu lưu tiếp tục", "có điều gì đó phía trước", "một biến số đang chờ".
 
-5. USER ROOT
-- ESTABLISH: apply first; immutable.
-- ATTEMPT: attempt happened; outcome may branch.
-- META/QUESTION: not an in-world event.
+stop_boundary phải dừng trước reaction/decision của <user>.
 
-6. BUTTERFLY LEDGER
-Mỗi canon thread phải được hiểu như INTACT / SCHEDULED_ELIGIBLE / ACTIVE / DIVERGED / INVALIDATED / REBUILT trên POST_USER_STATE.
+OPTIONAL_NOW chỉ khi event có thể xuất hiện nhưng scene hiện tại vẫn còn interaction quan trọng chưa xong.
+NONE chỉ khi thực sự chưa có beat hiện tại hợp lệ.
+
+3. OPEN-DIRECTION MODE
+Nếu user nói "đi đâu cũng được", "cứ tiến về trước", "tiếp tục đi", không có destination:
+- KHÔNG được để vô định nhiều lượt.
+- chọn waypoint/event canon/world hợp lý gần nhất từ active lore/card/canon state;
+- nếu có intersection hợp lệ => scene_hook MANDATORY_NOW.
+
+4. FUTURE OUTLINE
+- objective_locked: world events độc lập.
+- conditional: encounter/opportunity tương lai có activation/cancel thật.
+- next_hidden_step là FUTURE, không phải current scene hook.
+- subtle_sign_candidates chỉ dùng khi event chưa tới hạn.
+
+5. NO EMPTY PLOT
+Nếu main scene đã chỉ còn tả cảnh + di chuyển và active lore/canon có motion đáng kể, scene_hook không được NONE chỉ vì event không do user gây ra.
+
+6. BUTTERFLY
+INTACT / SCHEDULED_ELIGIBLE / ACTIVE / DIVERGED / INVALIDATED / REBUILT trên POST_USER_STATE.
 Không snap-back outcome đã mất prerequisite.
 
-7. NO EMPTY FUTURE
-- Nếu current scene đang đi lại/vô định và có canon backbone hợp lệ gần đó, đừng trả outline rỗng chỉ vì event không do user gây ra.
-- Planner phải cung cấp ít nhất một world thread hoặc encounter candidate khi context thật sự có canon/world motion đáng kể.
-- Không tạo drama ngẫu nhiên nếu không có căn cứ.
+7. USER MIND
+Không viết <user> nhận ra/đoán/chọn/đồng ý trong hook.
 
-8. FORESHADOWING
-- subtle_sign_candidates được phép [] và thường nên [] nếu encounter đã tới hạn.
-- Khi encounter/event đã đủ điều kiện xuất hiện, ưu tiên event thật thay vì kéo dài bằng dấu hiệu mơ hồ.
-
-9. KHÔNG SUY LUẬN THAY USER
-Không viết user nhận ra/đoán/chọn/đồng ý. Chỉ lập world state và encounter opportunity.
-
-10. JSON ONLY
-Giữ schema v2 hiện tại. objective_locked cho world events độc lập. conditional cho encounter/opportunity có thể đổi theo route/quan hệ. retired cho thread đã mất prerequisite.`;
+8. OUTPUT JSON ONLY — SCHEMA v3
+Trả đúng dạng:
+{
+  "version": 3,
+  "scene_hook": {
+    "mode": "MANDATORY_NOW|OPTIONAL_NOW|NONE",
+    "event": "",
+    "source": "",
+    "why_now": "",
+    "entry_action": "",
+    "stop_boundary": "",
+    "involved": [],
+    "conditions_verified": []
+  },
+  "objective_locked": [],
+  "conditional": [],
+  "retired": []
+}
+Không markdown. Không giải thích ngoài JSON.`
 
   const defaults = {
     enabled: false,
@@ -180,7 +208,8 @@ Giữ schema v2 hiện tại. objective_locked cho world events độc lập. co
   function stripPrivateBlocks(text) {
     return String(text || '')
       .replace(/<future_outline>[\s\S]*?<\/future_outline>/gi, '')
-      .replace(/<external_future_outline>[\s\S]*?<\/external_future_outline>/gi, '');
+      .replace(/<external_future_outline>[\s\S]*?<\/external_future_outline>/gi, '')
+      .replace(/<external_scene_hook[\s\S]*?<\/external_scene_hook>/gi, '');
   }
 
   function compactMessage(text) {
@@ -220,7 +249,7 @@ Giữ schema v2 hiện tại. objective_locked cho world events độc lập. co
       try { outline = JSON.parse(value); } catch (_) { outline = null; }
     }
     // Fail closed: schema v1 / malformed outlines are never injected.
-    if (!outline || Number(outline.version) !== 2) return null;
+    if (!outline || Number(outline.version) !== 3) return null;
     return outline;
   }
 
@@ -288,7 +317,7 @@ Giữ schema v2 hiện tại. objective_locked cho world events độc lập. co
       '=== PREVIOUS FUTURE OUTLINE ===', previous ? JSON.stringify(previous) : '(none)',
       '=== RECENT CHAT ===', recent || '(empty)',
       '=== TASK ===',
-      `Update the private future outline from the current state. Preserve valid old threads, retire invalidated conditional threads, and add only well-supported new threads. Classify the newest user turn as ESTABLISH, ATTEMPT, or META. Apply ESTABLISH first as immutable user state. Then continue independent canon/world backbone processes from the post-user state. If canon time/location/prerequisites intersect the user route, create a conditional canon encounter/hook instead of leaving the outline empty. Never force the user's reaction or canon outcome. Return only JSON following the schema.`,
+      `Update schema-v3 private planner state. First apply newest user ESTABLISH as immutable state. Then inspect active card/worldbook/canon/NPC processes. Crucially choose scene_hook for the NEXT MAIN GENERATION: if the current scene is filler/travel/open-direction and a valid canon/world beat can intersect now, set scene_hook.mode=MANDATORY_NOW with a concrete entry_action and stop_boundary. Do not merely place the beat in future outline. If no current beat is valid, use OPTIONAL_NOW or NONE. Preserve valid future threads and retire invalidated ones. Return JSON only.`,
     ].filter(Boolean).join('\n\n');
   }
 
@@ -356,7 +385,39 @@ Giữ schema v2 hiện tại. objective_locked cho world events độc lập. co
 
   function sanitizeOutline(value, ctx = stContext()) {
     if (!value || typeof value !== 'object') throw new Error('Outline rỗng');
-    const retired = Array.isArray(value.retired) ? value.retired.slice(0, 12).map(x => ({ id:String(x?.id||''), reason:String(x?.reason||'invalidated') })) : [];
+
+    const retired = Array.isArray(value.retired)
+      ? value.retired.slice(0, 12).map(x => ({ id:String(x?.id||''), reason:String(x?.reason||'invalidated') }))
+      : [];
+
+    const rawHook = value.scene_hook && typeof value.scene_hook === 'object' ? value.scene_hook : {};
+    const modeRaw = String(rawHook.mode || 'NONE').toUpperCase();
+    const mode = ['MANDATORY_NOW','OPTIONAL_NOW','NONE'].includes(modeRaw) ? modeRaw : 'NONE';
+    const scene_hook = {
+      mode,
+      event: String(rawHook.event || '').trim(),
+      source: String(rawHook.source || '').trim(),
+      why_now: String(rawHook.why_now || '').trim(),
+      entry_action: String(rawHook.entry_action || '').trim(),
+      stop_boundary: String(rawHook.stop_boundary || '').trim(),
+      involved: cleanStringArray(rawHook.involved, 12),
+      conditions_verified: cleanStringArray(rawHook.conditions_verified, 10),
+    };
+    if (scene_hook.mode !== 'NONE') {
+      if (!scene_hook.event || !scene_hook.entry_action || !scene_hook.why_now || !scene_hook.stop_boundary) {
+        scene_hook.mode = 'NONE';
+      }
+    }
+    if (scene_hook.mode === 'NONE') {
+      scene_hook.event = '';
+      scene_hook.source = '';
+      scene_hook.why_now = '';
+      scene_hook.entry_action = '';
+      scene_hook.stop_boundary = '';
+      scene_hook.involved = [];
+      scene_hook.conditions_verified = [];
+    }
+
     const objective = [];
     for (const raw of Array.isArray(value.objective_locked) ? value.objective_locked.slice(0, 10) : []) {
       if (!raw || typeof raw !== 'object') continue;
@@ -380,6 +441,7 @@ Giữ schema v2 hiện tại. objective_locked cho world events độc lập. co
       if (item.event && item.fixed_core) objective.push(item);
       if (objective.length >= 6) break;
     }
+
     const conditional = [];
     for (const raw of Array.isArray(value.conditional) ? value.conditional.slice(0, 10) : []) {
       if (!raw || typeof raw !== 'object') continue;
@@ -397,16 +459,16 @@ Giữ schema v2 hiện tại. objective_locked cho world events độc lập. co
         next_hidden_step: raw.next_hidden_step == null ? null : String(raw.next_hidden_step).trim(),
         subtle_sign_candidates: sanitizeSigns(raw.subtle_sign_candidates, ctx, involved),
       };
-      // Một conditional không có khả năng hủy thì vẫn là “định mệnh trá hình”; loại bỏ.
-      if (!item.event || !item.cause || !item.activation_conditions.length || !item.cancel_conditions.length) {
+      if (!item.event || !item.cause || !item.activation_conditions.length) {
         if (item.id) retired.push({ id:item.id, reason:'invalidated' });
         continue;
       }
       conditional.push(item);
       if (conditional.length >= 6) break;
     }
-    const out = { version: 2, objective_locked: objective, conditional, retired: retired.slice(0, 12) };
-    if (JSON.stringify(out).length > 24000) throw new Error('Outline vượt giới hạn 24k ký tự');
+
+    const out = { version: 3, scene_hook, objective_locked: objective, conditional, retired: retired.slice(0, 12) };
+    if (JSON.stringify(out).length > 28000) throw new Error('Outline vượt giới hạn 28k ký tự');
     return out;
   }
 
@@ -436,33 +498,42 @@ Giữ schema v2 hiện tại. objective_locked cho world events độc lập. co
 
   async function injectOutline(ctx, outline) {
     if (!ctx?.setExtensionPrompt) return;
-    // Never allow the old v1 extension prompt to coexist with the strict v2 prompt.
     try {
       for (const id of LEGACY_EXT_PROMPT_IDS) await ctx.setExtensionPrompt(id, '', 1, 0, false, 0);
     } catch (_) {}
-    if (!outline || Number(outline.version) !== 2) outline = null;
-    const content = outline ? `<external_future_outline authority="EXCLUSIVE" mode="EXTERNAL" version="2" planner_version="${VERSION}">
+
+    if (!outline || Number(outline.version) !== 3) outline = null;
+    const hook = outline?.scene_hook || { mode:'NONE' };
+
+    const hookContent = outline ? `<external_scene_hook authority="CURRENT_WORLD_BEAT" mode="${hook.mode}" planner_version="${VERSION}">
+[PRIVATE CURRENT-SCENE DIRECTIVE — DO NOT REVEAL AS META]
+${JSON.stringify(hook)}
+</external_scene_hook>` : '';
+
+    const content = outline ? `<external_future_outline authority="EXCLUSIVE" mode="EXTERNAL" version="3" planner_version="${VERSION}">
 [PRIVATE PLANNER STATE — NEVER REVEAL, SUMMARIZE, OR REWRITE TO USER]
 ${JSON.stringify(outline)}
 </external_future_outline>
+${hookContent}
 <external_future_outline_lock>
-[RUNTIME HANDSHAKE: planner=${VERSION}; schema=2; stale schema is invalid]
-[HARD MODE SWITCH — THIS OVERRIDES INTERNAL FUTURE PLANNING FOR THIS GENERATION]
-1. <external_future_outline> is the ONLY authoritative future outline for this generation. Do not create, expand, reinterpret, or replace it with an INTERNAL outline.
-2. Canon/original timeline is reference only. Never force a canon protagonist encounter onto <user>. If the external outline does not contain an event, do not invent that future event merely because canon had it.
-3. When processing <future_event_planning_protocol>, SKIP internal planning. In reasoning/story_driver, at most acknowledge: [External planner]: loaded. Do not list new future branches.
-4. Output EXACTLY this private marker and nothing else inside the tag: <future_outline>[Mode]: EXTERNAL</future_outline>. Any INTERNAL content is invalid and will be discarded by Regex.
-5. Foreshadowing is OPTIONAL. Use at most ONE item from subtle_sign_candidates only when it fits the current place/time naturally. If none fits, use no sign.
-6. A sign must be written only as a literal mundane detail. Do not identify its future actor/event, do not explain why it matters, do not add narrator emphasis, and do not infer <user>'s reaction.
-7. Never turn next_hidden_step into an on-screen fact until it has actually occurred and has a valid information/causal path into the current scene.
-8. Other reasoning modules should prefer named future NPC/events present in this external outline. A validated canon backbone event may also activate when its time/prerequisites are already established in current world state; canon is not forbidden from moving merely because user did not cause it.
-9. USER AUTHORITY IS HIGHEST. Classify the newest user turn as ESTABLISH / ATTEMPT / META.
-10. If ESTABLISH: apply the declared user action/result to state FIRST as an immutable causal root. Old facts, canon, NPC opposition, logistics, rules, costs, travel restrictions, missing routes, outages, or prior assumptions may NOT veto that root. Reconcile the old state around the user's declaration.
-11. If ATTEMPT: the attempt itself happened; only the unresolved outcome may be calculated.
-12. Apply USER ROOT first. Then derive user-related consequences from POST-USER STATE AND continue independent WORLD/CANON BACKBONE processes whose prerequisites remain valid.
-13. Before story_scene, delete only canon encounters that FAIL prerequisite/intersection validation. KEEP canon encounters that are supported by active/scheduled canon backbone + current route/time/location. Do not force the user response or outcome.
+[RUNTIME HANDSHAKE: planner=${VERSION}; schema=3]
+1. Future planning authority: <external_future_outline> is authoritative for FUTURE continuity. Do not create a competing internal future outline.
+2. CURRENT EVENT authority is separate: <external_scene_hook> is NOT future speculation.
+3. If <external_scene_hook mode="MANDATORY_NOW">:
+   - MUST realize its event/entry_action in THIS story_scene.
+   - MUST NOT replace it with foreshadowing, scenery, travel filler, generic reflection, or a trailer ending.
+   - MUST NOT postpone it to next turn.
+   - MUST stop at stop_boundary before deciding <user>'s reaction.
+4. If mode=OPTIONAL_NOW: use it when the current interaction does not already require stopping sooner.
+5. If mode=NONE: card/worldbook/world-backbone current-event directives remain allowed. External planner does NOT freeze world agency.
+6. Card/worldbook/scenario plot-driving instructions are valid world-backbone sources when compatible with POST_USER_STATE and butterfly state. They are not suppressed merely because they were not listed as future events.
+7. next_hidden_step remains future-only. Never surface it merely because it exists.
+8. subtle_sign_candidates are only for events NOT ready now. If an event is current/mandatory, show the actual event instead of a sign.
+9. USER AUTHORITY remains highest for user action/outcome. The hook controls WORLD/NPC entry only, not <user>'s reaction.
+10. Canon encounters supported by current route/time/location + intact prerequisites are valid. Do not delete them as protagonist-centric convenience.
+11. In <future_event_planning_protocol>, skip INTERNAL outline and output only <future_outline>[Mode]: EXTERNAL</future_outline>.
 </external_future_outline_lock>` : '';
-    // Strict mode always injects nearest to generation; old saved depth settings cannot weaken the lock.
+
     await ctx.setExtensionPrompt(EXT_PROMPT_ID, content, 1, 0, false, 0);
   }
 
@@ -493,7 +564,7 @@ ${JSON.stringify(outline)}
       const outline = await callPlanner(ctx);
       await persistOutline(ctx, outline);
       await injectOutline(ctx, outline);
-      setStatus(`Đã cập nhật: ${outline.objective_locked.length} khách quan · ${outline.conditional.length} điều kiện`);
+      setStatus(`Đã cập nhật: hook=${outline.scene_hook?.mode || 'NONE'} · ${outline.objective_locked.length} khách quan · ${outline.conditional.length} điều kiện`);
       renderPreview();
     } catch (e) {
       const old = getSavedOutline(ctx);
@@ -546,7 +617,7 @@ ${JSON.stringify(outline)}
       <div class="mfp-row"><div><label>Timeout (ms)</label><input id="mfp-timeout" type="number" min="10000" max="180000" value="${esc(config.timeoutMs)}"></div><div><label>Strict lock</label><input value="ON · depth 0" disabled></div><div></div></div>
       <div class="mfp-actions"><button id="mfp-save">Lưu cấu hình</button><button id="mfp-test">Test + Load model</button><button id="mfp-run">Tính đại cương ngay</button><button id="mfp-clear">Xóa outline chat này</button></div>
       <div id="mfp-status" class="mfp-status"></div>
-      <div class="mfp-note">Planner chỉ lập đại cương kín. Nếu endpoint chặn CORS, hãy dùng URL proxy có cho phép browser request. Outline được lưu theo từng chat. Strict lock luôn inject ở depth 0 để model chính không tự quay về INTERNAL.</div>
+      <div class="mfp-note">Planner chỉ lập đại cương kín. Nếu endpoint chặn CORS, hãy dùng URL proxy có cho phép browser request. Outline được lưu theo từng chat. Schema v3 inject ở depth 0. MANDATORY_NOW là current-scene hook bắt buộc, không chỉ là đại cương tương lai.</div>
     </section>
     <section class="mfp-section">
       <h3>Đại cương hiện tại</h3>
@@ -771,6 +842,6 @@ ${JSON.stringify(outline)}
   await injectOutline(stContext(), config.enabled ? getSavedOutline() : null);
 
   window[SCRIPT_KEY] = { version: VERSION, open: openUi, run: () => runPlanner({ manual:true }), cleanup, getConfig: () => ({...config}) };
-  try { hostWindow.__MIEMIE_FUTURE_PLANNER_RUNTIME__ = { version: VERSION, schema: 2, loadedAt: new Date().toISOString() }; } catch (_) {}
-  console.info(`[Miemie Future Planner] loaded v${VERSION}; schema=2; UI host=${hostDocument === document ? 'script-frame' : 'parent-document'}`);
+  try { hostWindow.__MIEMIE_FUTURE_PLANNER_RUNTIME__ = { version: VERSION, schema: 3, loadedAt: new Date().toISOString() }; } catch (_) {}
+  console.info(`[Miemie Future Planner] loaded v${VERSION}; schema=3; UI host=${hostDocument === document ? 'script-frame' : 'parent-document'}`);
 })();
