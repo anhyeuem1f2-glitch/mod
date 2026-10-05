@@ -1,15 +1,15 @@
 (async () => {
   'use strict';
 
-  const VERSION = '1.6.0';
-  const BUILD_MARKER = 'CURRENT_SCENE_HOOK_SCHEMA3_2026-10-05';
+  const VERSION = '1.7.0';
+  const BUILD_MARKER = 'EARLY_SCENE_SEED_SCHEMA4_2026-10-05';
   const SCRIPT_KEY = '__MIEMIE_FUTURE_PLANNER_EXTERNAL__';
   const BUTTON_NAME = 'Miemie Future Planner';
   const STORAGE_KEY = 'miemie_future_planner_external_config_v1';
-  const META_KEY = '__miemie_future_outline_v3';
-  const LEGACY_META_KEYS = ['__miemie_future_outline_v1', '__miemie_future_outline_v2'];
-  const EXT_PROMPT_ID = 'miemie_external_future_outline_v3';
-  const LEGACY_EXT_PROMPT_IDS = ['miemie_external_future_outline_v1', 'miemie_external_future_outline_v2'];
+  const META_KEY = '__miemie_future_outline_v4';
+  const LEGACY_META_KEYS = ['__miemie_future_outline_v1', '__miemie_future_outline_v2', '__miemie_future_outline_v3'];
+  const EXT_PROMPT_ID = 'miemie_external_future_outline_v4';
+  const LEGACY_EXT_PROMPT_IDS = ['miemie_external_future_outline_v1', 'miemie_external_future_outline_v2', 'miemie_external_future_outline_v3'];
   const UI_ID = 'mfp-external-ui-v1';
 
   // Tavern Helper scripts run in a background iframe. UI must be mounted into
@@ -32,87 +32,78 @@
     if (window[SCRIPT_KEY]?.cleanup) await window[SCRIPT_KEY].cleanup();
   } catch (_) {}
 
-  const PLANNER_SYSTEM = `Bạn là bộ lập đại cương KÍN + bộ chọn CURRENT SCENE HOOK cho một phiên nhập vai đồng nhân/SillyTavern. Bạn KHÔNG viết chính văn và KHÔNG điều khiển <user>.
+  const PLANNER_SYSTEM = `Bạn là bộ lập đại cương KÍN + bộ chọn SCENE SEED SỚM cho RP đồng nhân/SillyTavern. Bạn KHÔNG viết chính văn và KHÔNG điều khiển quyết định quan trọng của <user>.
 
 MỤC TIÊU:
 1) giữ future outline nhất quán;
 2) giữ canon/world backbone tự vận hành;
-3) QUAN TRỌNG NHẤT: khi một event/NPC/world beat đã đủ điều kiện xảy ra NGAY LƯỢT NÀY, xuất scene_hook để main model bắt buộc triển khai, thay vì để outline chỉ nằm chết trong JSON.
+3) khi có beat hiện tại hợp lệ, tạo scene_seed để main model mở tương tác SỚM thay vì giữ hook tới cuối rồi lấp bằng narration.
 
 0. USER AUTHORITY
-- ESTABLISH của <user> là immutable root fact: apply first.
-- ATTEMPT: attempt đã xảy ra, outcome có thể tính.
+- ESTABLISH của user là root fact.
+- ATTEMPT: attempt là fact, outcome có thể tính.
 - Không veto/reroute user.
 
-1. WORLD/CANON BACKBONE
-- Canon/world actors có lịch trình độc lập nếu prerequisites chưa bị butterfly phá.
-- Canon không quyết định reaction/outcome của user.
-- Card/worldbook/scenario plot-driving directives là nguồn world-backbone hợp lệ nếu không xung đột user state.
-
-2. SCENE_HOOK — CURRENT EVENT, KHÔNG PHẢI FUTURE
-Trả field scene_hook:
+1. SCENE SEED — EARLY, NOT ENDING
+Trả:
 {
-  "mode": "MANDATORY_NOW" | "OPTIONAL_NOW" | "NONE",
+  "mode": "MANDATORY_EARLY" | "OPTIONAL_EARLY" | "NONE",
   "event": "...",
   "source": "canon_backbone|worldbook|npc_goal|user_consequence|mixed",
   "why_now": "...",
   "entry_action": "...",
+  "interaction_vector": "NPC_INITIATES|WORLD_EVENT|DISCOVERY|ARRIVAL",
   "stop_boundary": "...",
   "involved": ["..."],
   "conditions_verified": ["..."]
 }
 
-Chọn MANDATORY_NOW khi:
-- scene hiện tại đang filler/di chuyển/vô định VÀ có canon/world event hợp lệ có thể chạm user ngay;
-- route/time/location của user đã intersect một canon NPC/event;
-- card/worldbook đang chủ động dẫn tới một encounter/arc và prerequisite còn hợp lệ;
-- một hậu quả trực tiếp đã tới lúc hiện ra.
+MANDATORY_EARLY khi:
+- scene đang travel/filler/open-direction và có canon/world beat hợp lệ intersect now;
+- NPC đang cùng scene có mục tiêu/câu hỏi/thông tin tự nhiên cần chủ động nêu;
+- một hậu quả đã tới lúc xuất hiện;
+- card/worldbook đang chủ động dẫn mainline và prerequisite còn nguyên.
 
-MANDATORY_NOW nghĩa là event phải XẢY RA TRONG GENERATION KẾ TIẾP.
-entry_action phải là hành động/vật thể/NPC cụ thể có thể xuất hiện trên màn hình, ví dụ:
-- "Một hòn đảo có thị trấn xuất hiện ở đường chân trời..."
-- "Con tàu mang cờ của băng X cắt ngang mũi thuyền..."
-- "NPC X bước ra khỏi quán đúng lúc..."
-- "Đạn pháo từ tàu hải quân rơi xuống phía trước..."
-KHÔNG viết entry_action kiểu "cuộc phiêu lưu tiếp tục", "có điều gì đó phía trước", "một biến số đang chờ".
+entry_action phải xảy ra ở ĐẦU/ĐẦU-SỚM của generation kế tiếp, không phải đoạn kết.
+Nếu NPC_INITIATES, entry_action nên là hành động hoặc câu mở đầu cụ thể của NPC, không phải narrator tóm tắt cả cuộc nói chuyện.
+stop_boundary là decision/knowledge/ability boundary của user; không có nghĩa seed phải chờ tới cuối mới xảy ra.
 
-stop_boundary phải dừng trước reaction/decision của <user>.
+2. NO USER ABILITY FABRICATION
+- Scene seed chỉ điều khiển WORLD/NPC entry.
+- Cấm đưa vào seed bất kỳ user ability activation/effect nào user chưa explicit duy trì.
+- Cấm dùng user status/bounty/power làm trang trí hoặc lời ca ngợi.
 
-OPTIONAL_NOW chỉ khi event có thể xuất hiện nhưng scene hiện tại vẫn còn interaction quan trọng chưa xong.
-NONE chỉ khi thực sự chưa có beat hiện tại hợp lệ.
+3. INTERACTION-FIRST
+- Nếu active NPC ở cùng scene và có lý do giao tiếp, ưu tiên NPC initiative cụ thể hơn 1000 chữ phong cảnh.
+- Không áp quota thoại. Dialogue xuất hiện khi goal/personality/context tự nhiên dẫn tới nói.
+- Không viết reaction/decision quan trọng của user.
 
-3. OPEN-DIRECTION MODE
-Nếu user nói "đi đâu cũng được", "cứ tiến về trước", "tiếp tục đi", không có destination:
-- KHÔNG được để vô định nhiều lượt.
-- chọn waypoint/event canon/world hợp lý gần nhất từ active lore/card/canon state;
-- nếu có intersection hợp lệ => scene_hook MANDATORY_NOW.
+4. OPEN DIRECTION
+Nếu user "cứ đi", "đâu cũng được", "tiếp tục":
+- chọn waypoint/canon-world beat hợp lý gần nhất;
+- không để nhiều lượt chỉ đi thuyền/đi đường;
+- nếu beat valid now => MANDATORY_EARLY.
 
-4. FUTURE OUTLINE
-- objective_locked: world events độc lập.
-- conditional: encounter/opportunity tương lai có activation/cancel thật.
-- next_hidden_step là FUTURE, không phải current scene hook.
-- subtle_sign_candidates chỉ dùng khi event chưa tới hạn.
+5. WORLD/CANON BACKBONE
+- Canon/world actors chạy độc lập trên POST_USER_STATE.
+- Card/worldbook plot-driving directive là nguồn hợp lệ.
+- Butterfly phá prerequisite -> DIVERGED/INVALIDATED; phần còn nguyên vẫn chạy.
 
-5. NO EMPTY PLOT
-Nếu main scene đã chỉ còn tả cảnh + di chuyển và active lore/canon có motion đáng kể, scene_hook không được NONE chỉ vì event không do user gây ra.
+6. FUTURE OUTLINE
+- objective_locked / conditional dành cho TƯƠNG LAI.
+- next_hidden_step không phải current seed.
+- subtle_sign chỉ khi event chưa tới hạn.
 
-6. BUTTERFLY
-INTACT / SCHEDULED_ELIGIBLE / ACTIVE / DIVERGED / INVALIDATED / REBUILT trên POST_USER_STATE.
-Không snap-back outcome đã mất prerequisite.
-
-7. USER MIND
-Không viết <user> nhận ra/đoán/chọn/đồng ý trong hook.
-
-8. OUTPUT JSON ONLY — SCHEMA v3
-Trả đúng dạng:
+7. OUTPUT JSON ONLY — SCHEMA v4
 {
-  "version": 3,
-  "scene_hook": {
-    "mode": "MANDATORY_NOW|OPTIONAL_NOW|NONE",
+  "version": 4,
+  "scene_seed": {
+    "mode": "MANDATORY_EARLY|OPTIONAL_EARLY|NONE",
     "event": "",
     "source": "",
     "why_now": "",
     "entry_action": "",
+    "interaction_vector": "",
     "stop_boundary": "",
     "involved": [],
     "conditions_verified": []
@@ -209,7 +200,8 @@ Không markdown. Không giải thích ngoài JSON.`
     return String(text || '')
       .replace(/<future_outline>[\s\S]*?<\/future_outline>/gi, '')
       .replace(/<external_future_outline>[\s\S]*?<\/external_future_outline>/gi, '')
-      .replace(/<external_scene_hook[\s\S]*?<\/external_scene_hook>/gi, '');
+      .replace(/<external_scene_hook[\s\S]*?<\/external_scene_hook>/gi, '')
+      .replace(/<external_scene_seed[\s\S]*?<\/external_scene_seed>/gi, '');
   }
 
   function compactMessage(text) {
@@ -249,7 +241,7 @@ Không markdown. Không giải thích ngoài JSON.`
       try { outline = JSON.parse(value); } catch (_) { outline = null; }
     }
     // Fail closed: schema v1 / malformed outlines are never injected.
-    if (!outline || Number(outline.version) !== 3) return null;
+    if (!outline || Number(outline.version) !== 4) return null;
     return outline;
   }
 
@@ -317,7 +309,7 @@ Không markdown. Không giải thích ngoài JSON.`
       '=== PREVIOUS FUTURE OUTLINE ===', previous ? JSON.stringify(previous) : '(none)',
       '=== RECENT CHAT ===', recent || '(empty)',
       '=== TASK ===',
-      `Update schema-v3 private planner state. First apply newest user ESTABLISH as immutable state. Then inspect active card/worldbook/canon/NPC processes. Crucially choose scene_hook for the NEXT MAIN GENERATION: if the current scene is filler/travel/open-direction and a valid canon/world beat can intersect now, set scene_hook.mode=MANDATORY_NOW with a concrete entry_action and stop_boundary. Do not merely place the beat in future outline. If no current beat is valid, use OPTIONAL_NOW or NONE. Preserve valid future threads and retire invalidated ones. Return JSON only.`,
+      `Update schema-v4 planner state. Apply newest user ESTABLISH first. Then inspect active NPC/card/worldbook/canon processes. Select scene_seed for the NEXT generation. If a valid current beat exists, especially during travel/filler/open-direction or when an active NPC naturally initiates interaction, use MANDATORY_EARLY and make entry_action concrete enough to happen in the first 1-2 prose paragraphs. Never put user ability activation/effects or narrator praise into the seed. Future outline remains separate. Return JSON only.`,
     ].filter(Boolean).join('\n\n');
   }
 
@@ -390,32 +382,34 @@ Không markdown. Không giải thích ngoài JSON.`
       ? value.retired.slice(0, 12).map(x => ({ id:String(x?.id||''), reason:String(x?.reason||'invalidated') }))
       : [];
 
-    const rawHook = value.scene_hook && typeof value.scene_hook === 'object' ? value.scene_hook : {};
-    const modeRaw = String(rawHook.mode || 'NONE').toUpperCase();
-    const mode = ['MANDATORY_NOW','OPTIONAL_NOW','NONE'].includes(modeRaw) ? modeRaw : 'NONE';
-    const scene_hook = {
+    const rawSeed = value.scene_seed && typeof value.scene_seed === 'object' ? value.scene_seed : {};
+    const modeRaw = String(rawSeed.mode || 'NONE').toUpperCase();
+    const mode = ['MANDATORY_EARLY','OPTIONAL_EARLY','NONE'].includes(modeRaw) ? modeRaw : 'NONE';
+    const scene_seed = {
       mode,
-      event: String(rawHook.event || '').trim(),
-      source: String(rawHook.source || '').trim(),
-      why_now: String(rawHook.why_now || '').trim(),
-      entry_action: String(rawHook.entry_action || '').trim(),
-      stop_boundary: String(rawHook.stop_boundary || '').trim(),
-      involved: cleanStringArray(rawHook.involved, 12),
-      conditions_verified: cleanStringArray(rawHook.conditions_verified, 10),
+      event: String(rawSeed.event || '').trim(),
+      source: String(rawSeed.source || '').trim(),
+      why_now: String(rawSeed.why_now || '').trim(),
+      entry_action: String(rawSeed.entry_action || '').trim(),
+      interaction_vector: String(rawSeed.interaction_vector || '').trim(),
+      stop_boundary: String(rawSeed.stop_boundary || '').trim(),
+      involved: cleanStringArray(rawSeed.involved, 12),
+      conditions_verified: cleanStringArray(rawSeed.conditions_verified, 10),
     };
-    if (scene_hook.mode !== 'NONE') {
-      if (!scene_hook.event || !scene_hook.entry_action || !scene_hook.why_now || !scene_hook.stop_boundary) {
-        scene_hook.mode = 'NONE';
+    if (scene_seed.mode !== 'NONE') {
+      if (!scene_seed.event || !scene_seed.entry_action || !scene_seed.why_now || !scene_seed.stop_boundary) {
+        scene_seed.mode = 'NONE';
       }
     }
-    if (scene_hook.mode === 'NONE') {
-      scene_hook.event = '';
-      scene_hook.source = '';
-      scene_hook.why_now = '';
-      scene_hook.entry_action = '';
-      scene_hook.stop_boundary = '';
-      scene_hook.involved = [];
-      scene_hook.conditions_verified = [];
+    if (scene_seed.mode === 'NONE') {
+      scene_seed.event = '';
+      scene_seed.source = '';
+      scene_seed.why_now = '';
+      scene_seed.entry_action = '';
+      scene_seed.interaction_vector = '';
+      scene_seed.stop_boundary = '';
+      scene_seed.involved = [];
+      scene_seed.conditions_verified = [];
     }
 
     const objective = [];
@@ -467,7 +461,7 @@ Không markdown. Không giải thích ngoài JSON.`
       if (conditional.length >= 6) break;
     }
 
-    const out = { version: 3, scene_hook, objective_locked: objective, conditional, retired: retired.slice(0, 12) };
+    const out = { version: 4, scene_seed, objective_locked: objective, conditional, retired: retired.slice(0, 12) };
     if (JSON.stringify(out).length > 28000) throw new Error('Outline vượt giới hạn 28k ký tự');
     return out;
   }
@@ -502,36 +496,35 @@ Không markdown. Không giải thích ngoài JSON.`
       for (const id of LEGACY_EXT_PROMPT_IDS) await ctx.setExtensionPrompt(id, '', 1, 0, false, 0);
     } catch (_) {}
 
-    if (!outline || Number(outline.version) !== 3) outline = null;
-    const hook = outline?.scene_hook || { mode:'NONE' };
+    if (!outline || Number(outline.version) !== 4) outline = null;
+    const seed = outline?.scene_seed || { mode:'NONE' };
 
-    const hookContent = outline ? `<external_scene_hook authority="CURRENT_WORLD_BEAT" mode="${hook.mode}" planner_version="${VERSION}">
-[PRIVATE CURRENT-SCENE DIRECTIVE — DO NOT REVEAL AS META]
-${JSON.stringify(hook)}
-</external_scene_hook>` : '';
+    const seedContent = outline ? `<external_scene_seed authority="CURRENT_WORLD_BEAT" mode="${seed.mode}" planner_version="${VERSION}">
+[PRIVATE EARLY-SCENE DIRECTIVE — DO NOT REVEAL AS META]
+${JSON.stringify(seed)}
+</external_scene_seed>` : '';
 
-    const content = outline ? `<external_future_outline authority="EXCLUSIVE" mode="EXTERNAL" version="3" planner_version="${VERSION}">
+    const content = outline ? `<external_future_outline authority="EXCLUSIVE" mode="EXTERNAL" version="4" planner_version="${VERSION}">
 [PRIVATE PLANNER STATE — NEVER REVEAL, SUMMARIZE, OR REWRITE TO USER]
 ${JSON.stringify(outline)}
 </external_future_outline>
-${hookContent}
+${seedContent}
 <external_future_outline_lock>
-[RUNTIME HANDSHAKE: planner=${VERSION}; schema=3]
-1. Future planning authority: <external_future_outline> is authoritative for FUTURE continuity. Do not create a competing internal future outline.
-2. CURRENT EVENT authority is separate: <external_scene_hook> is NOT future speculation.
-3. If <external_scene_hook mode="MANDATORY_NOW">:
-   - MUST realize its event/entry_action in THIS story_scene.
-   - MUST NOT replace it with foreshadowing, scenery, travel filler, generic reflection, or a trailer ending.
-   - MUST NOT postpone it to next turn.
-   - MUST stop at stop_boundary before deciding <user>'s reaction.
-4. If mode=OPTIONAL_NOW: use it when the current interaction does not already require stopping sooner.
-5. If mode=NONE: card/worldbook/world-backbone current-event directives remain allowed. External planner does NOT freeze world agency.
-6. Card/worldbook/scenario plot-driving instructions are valid world-backbone sources when compatible with POST_USER_STATE and butterfly state. They are not suppressed merely because they were not listed as future events.
-7. next_hidden_step remains future-only. Never surface it merely because it exists.
-8. subtle_sign_candidates are only for events NOT ready now. If an event is current/mandatory, show the actual event instead of a sign.
-9. USER AUTHORITY remains highest for user action/outcome. The hook controls WORLD/NPC entry only, not <user>'s reaction.
-10. Canon encounters supported by current route/time/location + intact prerequisites are valid. Do not delete them as protagonist-centric convenience.
-11. In <future_event_planning_protocol>, skip INTERNAL outline and output only <future_outline>[Mode]: EXTERNAL</future_outline>.
+[RUNTIME HANDSHAKE: planner=${VERSION}; schema=4]
+1. Future outline governs FUTURE continuity; scene seed governs a CURRENT WORLD/NPC beat.
+2. If <external_scene_seed mode="MANDATORY_EARLY">:
+   - execute event/entry_action in the FIRST 1-2 prose paragraphs or equivalent first scene beat;
+   - do NOT save it for the ending;
+   - after seed, develop the scene from it through NPC/world interaction;
+   - stop only at stop_boundary when a real user decision/knowledge/ability boundary is reached.
+3. If interaction_vector=NPC_INITIATES, let the NPC actually act/speak as appropriate; do not summarize an entire conversation through narration.
+4. No dialogue quota. Speech emerges from NPC goals/personality/context.
+5. This seed NEVER authorizes <user> ability activation/effects, hidden knowledge, status flex, or narrator praise.
+6. If seed mode=NONE, card/worldbook/world-backbone current-event directives remain allowed. Planner does not freeze world agency.
+7. next_hidden_step is future-only. subtle signs are only for not-yet-current events.
+8. USER AUTHORITY remains highest for user-established facts. The seed controls WORLD/NPC entry, not major user decisions.
+9. Canon encounters supported by current route/time/location + intact prerequisites are valid.
+10. In <future_event_planning_protocol>, skip INTERNAL outline and output only <future_outline>[Mode]: EXTERNAL</future_outline>.
 </external_future_outline_lock>` : '';
 
     await ctx.setExtensionPrompt(EXT_PROMPT_ID, content, 1, 0, false, 0);
@@ -564,7 +557,7 @@ ${hookContent}
       const outline = await callPlanner(ctx);
       await persistOutline(ctx, outline);
       await injectOutline(ctx, outline);
-      setStatus(`Đã cập nhật: hook=${outline.scene_hook?.mode || 'NONE'} · ${outline.objective_locked.length} khách quan · ${outline.conditional.length} điều kiện`);
+      setStatus(`Đã cập nhật: seed=${outline.scene_seed?.mode || 'NONE'} · ${outline.objective_locked.length} khách quan · ${outline.conditional.length} điều kiện`);
       renderPreview();
     } catch (e) {
       const old = getSavedOutline(ctx);
@@ -617,7 +610,7 @@ ${hookContent}
       <div class="mfp-row"><div><label>Timeout (ms)</label><input id="mfp-timeout" type="number" min="10000" max="180000" value="${esc(config.timeoutMs)}"></div><div><label>Strict lock</label><input value="ON · depth 0" disabled></div><div></div></div>
       <div class="mfp-actions"><button id="mfp-save">Lưu cấu hình</button><button id="mfp-test">Test + Load model</button><button id="mfp-run">Tính đại cương ngay</button><button id="mfp-clear">Xóa outline chat này</button></div>
       <div id="mfp-status" class="mfp-status"></div>
-      <div class="mfp-note">Planner chỉ lập đại cương kín. Nếu endpoint chặn CORS, hãy dùng URL proxy có cho phép browser request. Outline được lưu theo từng chat. Schema v3 inject ở depth 0. MANDATORY_NOW là current-scene hook bắt buộc, không chỉ là đại cương tương lai.</div>
+      <div class="mfp-note">Planner chỉ lập đại cương kín. Nếu endpoint chặn CORS, hãy dùng URL proxy có cho phép browser request. Outline được lưu theo từng chat. Schema v4 inject ở depth 0. MANDATORY_EARLY là scene seed phải vào sớm, không được giữ tới đoạn kết.</div>
     </section>
     <section class="mfp-section">
       <h3>Đại cương hiện tại</h3>
@@ -842,6 +835,6 @@ ${hookContent}
   await injectOutline(stContext(), config.enabled ? getSavedOutline() : null);
 
   window[SCRIPT_KEY] = { version: VERSION, open: openUi, run: () => runPlanner({ manual:true }), cleanup, getConfig: () => ({...config}) };
-  try { hostWindow.__MIEMIE_FUTURE_PLANNER_RUNTIME__ = { version: VERSION, schema: 3, loadedAt: new Date().toISOString() }; } catch (_) {}
-  console.info(`[Miemie Future Planner] loaded v${VERSION}; schema=3; UI host=${hostDocument === document ? 'script-frame' : 'parent-document'}`);
+  try { hostWindow.__MIEMIE_FUTURE_PLANNER_RUNTIME__ = { version: VERSION, schema: 4, loadedAt: new Date().toISOString() }; } catch (_) {}
+  console.info(`[Miemie Future Planner] loaded v${VERSION}; schema=4; UI host=${hostDocument === document ? 'script-frame' : 'parent-document'}`);
 })();
