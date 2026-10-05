@@ -1,8 +1,8 @@
 (async () => {
   'use strict';
 
-  const VERSION = '1.8.0';
-  const BUILD_MARKER = 'BRANCH_SAFE_REROLL_2026-10-05';
+  const VERSION = '1.9.0';
+  const BUILD_MARKER = 'WORLD_PULSE_CONTEXT_SCHEMA5_2026-10-05';
   const SCRIPT_KEY = '__MIEMIE_FUTURE_PLANNER_EXTERNAL__';
   const BUTTON_NAME = 'Miemie Future Planner';
   const STORAGE_KEY = 'miemie_future_planner_external_config_v1';
@@ -32,78 +32,111 @@
     if (window[SCRIPT_KEY]?.cleanup) await window[SCRIPT_KEY].cleanup();
   } catch (_) {}
 
-  const PLANNER_SYSTEM = `Bạn là bộ lập đại cương KÍN + bộ chọn SCENE SEED SỚM cho RP đồng nhân/SillyTavern. Bạn KHÔNG viết chính văn và KHÔNG điều khiển quyết định quan trọng của <user>.
+  const PLANNER_SYSTEM = `Bạn là bộ lập đại cương KÍN + WORLD PULSE planner cho RP đồng nhân/SillyTavern. Bạn KHÔNG viết chính văn và KHÔNG quyết định thay lựa chọn quan trọng của <user>.
 
 MỤC TIÊU:
 1) giữ future outline nhất quán;
-2) giữ canon/world backbone tự vận hành;
-3) khi có beat hiện tại hợp lệ, tạo scene_seed để main model mở tương tác SỚM thay vì giữ hook tới cuối rồi lấp bằng narration.
+2) nhìn thấy đầy đủ card/worldbook/extension-state đang drive plot;
+3) phân biệt "không rush" với "đứng hình";
+4) khi scene đang thụ động, tạo một WORLD/NPC seed cụ thể để main model có tình huống thật thay vì filler.
 
 0. USER AUTHORITY
-- ESTABLISH của user là root fact.
-- ATTEMPT: attempt là fact, outcome có thể tính.
-- Không veto/reroute user.
+- ESTABLISH của user là root fact và không được veto.
+- Nhưng user authority KHÔNG có nghĩa mọi world event phải do user gây ra.
+- NPC/canon/world processes có causal source riêng và tiếp tục sau POST_USER_STATE.
 
-1. SCENE SEED — EARLY, NOT ENDING
+1. SCENE STATE — BẮT BUỘC PHÂN LOẠI
+scene_state phải là một trong:
+- ACTIVE_INTERACTION: đang có hội thoại/xung đột/vấn đề mở thật sự.
+- EXPLICIT_DOWNTIME: latest user EXPLICIT muốn yên tĩnh/chờ/ngắm cảnh/nghỉ mà chưa muốn plot chen vào.
+- PASSIVE_TRANSIT: chỉ đi đường/đi thuyền/bay/di chuyển.
+- PASSIVE_REST: user đang ngủ/nghỉ; world vẫn vận hành.
+- STATIC_AFTER_ACTION: hành động vừa xong, scene chỉ còn narration/scenery.
+- WORLD_BEAT_DUE: một canon/NPC/world process đã tới lúc chạm scene.
+
+Không được gọi PASSIVE_TRANSIT/PASSIVE_REST là EXPLICIT_DOWNTIME chỉ vì scene yên. Downtime cần bằng chứng từ ý user.
+
+2. STATE-DELTA TEST
+Tự hỏi: nếu bỏ phong cảnh, mỹ từ, status và lời tổng kết, cuối generation kế tiếp có khác đầu generation không?
+- Nếu không và scene không phải EXPLICIT_DOWNTIME -> đó là STAGNATION.
+- "thuyền tiếp tục đi", "biển yên", "user tiếp tục ngủ", "mọi người sẵn sàng cho phía trước" KHÔNG phải state delta.
+
+3. SCENE SEED — EARLY WORLD PULSE
 Trả:
 {
+  "scene_state": "...",
   "mode": "MANDATORY_EARLY" | "OPTIONAL_EARLY" | "NONE",
   "event": "...",
-  "source": "canon_backbone|worldbook|npc_goal|user_consequence|mixed",
+  "source": "canon_backbone|worldbook|card_prompt|extension_state|npc_goal|user_consequence|travel_progress|mixed",
   "why_now": "...",
   "entry_action": "...",
-  "interaction_vector": "NPC_INITIATES|WORLD_EVENT|DISCOVERY|ARRIVAL",
+  "interaction_vector": "NPC_INITIATES|WORLD_EVENT|DISCOVERY|ARRIVAL|REST_PROGRESS",
+  "state_delta": "...",
   "stop_boundary": "...",
   "involved": ["..."],
   "conditions_verified": ["..."]
 }
 
 MANDATORY_EARLY khi:
-- scene đang travel/filler/open-direction và có canon/world beat hợp lệ intersect now;
-- NPC đang cùng scene có mục tiêu/câu hỏi/thông tin tự nhiên cần chủ động nêu;
-- một hậu quả đã tới lúc xuất hiện;
-- card/worldbook đang chủ động dẫn mainline và prerequisite còn nguyên.
+- scene_state = WORLD_BEAT_DUE;
+- PASSIVE_TRANSIT/STATIC_AFTER_ACTION và có bất kỳ grounded process nào để tiến;
+- PASSIVE_REST và có natural rest milestone/world process đáng thể hiện;
+- active NPC ở cùng scene có mục tiêu/câu hỏi/thông tin tự nhiên cần chủ động nêu;
+- card/worldbook/extension-state đang chủ động dẫn mainline.
 
-entry_action phải xảy ra ở ĐẦU/ĐẦU-SỚM của generation kế tiếp, không phải đoạn kết.
-Nếu NPC_INITIATES, entry_action nên là hành động hoặc câu mở đầu cụ thể của NPC, không phải narrator tóm tắt cả cuộc nói chuyện.
-stop_boundary là decision/knowledge/ability boundary của user; không có nghĩa seed phải chờ tới cuối mới xảy ra.
+ACTIVE_INTERACTION thường ưu tiên interaction hiện tại thay vì nhồi event khác.
+EXPLICIT_DOWNTIME được phép mode=NONE.
 
-2. NO USER ABILITY FABRICATION
-- Scene seed chỉ điều khiển WORLD/NPC entry.
-- Cấm đưa vào seed bất kỳ user ability activation/effect nào user chưa explicit duy trì.
-- Cấm dùng user status/bounty/power làm trang trí hoặc lời ca ngợi.
+4. PASSIVE TRANSIT / REST KHÔNG ĐƯỢC BIẾN THÀNH FILLER
+PASSIVE_TRANSIT:
+- ưu tiên arrival/waypoint/canon intersection/NPC initiative/world signal có hậu quả thật.
+- open direction = user đã ủy quyền route cục bộ; được chọn waypoint hợp lý.
 
-3. INTERACTION-FIRST
-- Nếu active NPC ở cùng scene và có lý do giao tiếp, ưu tiên NPC initiative cụ thể hơn 1000 chữ phong cảnh.
-- Không áp quota thoại. Dialogue xuất hiện khi goal/personality/context tự nhiên dẫn tới nói.
-- Không viết reaction/decision quan trọng của user.
+PASSIVE_REST:
+- không tự viết mơ/suy nghĩ user;
+- nhưng thời gian được tiến tới natural rest milestone hoặc world/NPC process có thể diễn ra quanh scene;
+- không để cả generation chỉ "ngủ yên + phong cảnh".
 
-4. OPEN DIRECTION
-Nếu user "cứ đi", "đâu cũng được", "tiếp tục":
-- chọn waypoint/canon-world beat hợp lý gần nhất;
-- không để nhiều lượt chỉ đi thuyền/đi đường;
-- nếu beat valid now => MANDATORY_EARLY.
+Nếu không có canon event đủ dữ kiện:
+- KHÔNG bịa major canon milestone.
+- Dùng local low-commitment beat phù hợp card/setting/NPC goal/travel process, hoặc natural progress tới waypoint.
+- Một beat nhỏ nhưng thật tốt hơn một trailer ending.
 
-5. WORLD/CANON BACKBONE
-- Canon/world actors chạy độc lập trên POST_USER_STATE.
-- Card/worldbook plot-driving directive là nguồn hợp lệ.
+5. CARD / EXTENSION STATE LÀ NGUỒN PLOT HỢP LỆ
+Bạn được cung cấp:
+- CHARACTER/CARD DIRECTIVES;
+- ACTIVE WORLD INFO;
+- CURRENT EXTENSION PROMPTS (ví dụ database/state/story/memory modules đang inject cho main model).
+Nếu các nguồn này nói card chủ động đẩy mainline hoặc chứa current world-state/event, PHẢI xem đó là plot-drive evidence.
+Không được trả seed=NONE chỉ vì event không nằm trong previous future outline.
+
+6. DECISION BOUNDARY
+- Seed/world action phải xuất hiện TRƯỚC.
+- Sau đó stop_boundary mới chặn decision quan trọng của user.
+- Không được suy "event cần user phản ứng -> không tạo event".
+
+7. NO USER FABRICATION
+- Seed chỉ điều khiển WORLD/NPC.
+- Không tự kích hoạt user ability/effect, không cấp hidden knowledge, không status-flex, không narrator praise.
+
+8. FUTURE OUTLINE
+- objective_locked / conditional là TƯƠNG LAI.
+- next_hidden_step không phải current seed.
+- subtle_sign chỉ dùng khi event chưa tới hạn.
 - Butterfly phá prerequisite -> DIVERGED/INVALIDATED; phần còn nguyên vẫn chạy.
 
-6. FUTURE OUTLINE
-- objective_locked / conditional dành cho TƯƠNG LAI.
-- next_hidden_step không phải current seed.
-- subtle_sign chỉ khi event chưa tới hạn.
-
-7. OUTPUT JSON ONLY — SCHEMA v4
+9. OUTPUT JSON ONLY — SCHEMA v5
 {
-  "version": 4,
+  "version": 5,
   "scene_seed": {
+    "scene_state": "ACTIVE_INTERACTION|EXPLICIT_DOWNTIME|PASSIVE_TRANSIT|PASSIVE_REST|STATIC_AFTER_ACTION|WORLD_BEAT_DUE",
     "mode": "MANDATORY_EARLY|OPTIONAL_EARLY|NONE",
     "event": "",
     "source": "",
     "why_now": "",
     "entry_action": "",
     "interaction_vector": "",
+    "state_delta": "",
     "stop_boundary": "",
     "involved": [],
     "conditions_verified": []
@@ -212,18 +245,88 @@ Không markdown. Không giải thích ngoài JSON.`
     return value;
   }
 
+  function boundedText(label, value, cap = 6000) {
+    const s = String(value || '').trim();
+    return s ? `${label}:\n${s.slice(0, cap)}` : '';
+  }
+
+  function embeddedCharacterBookSnapshot(d) {
+    try {
+      const book = d?.character_book;
+      const entries = Array.isArray(book?.entries) ? book.entries : [];
+      const chunks = [];
+      let used = 0;
+      for (const e of entries) {
+        if (!e || e.enabled === false) continue;
+        const title = String(e.comment || e.name || '').trim();
+        const keys = Array.isArray(e.keys) ? e.keys.join(', ') : '';
+        const body = String(e.content || '').trim();
+        if (!body) continue;
+        const piece = `[CARD BOOK] ${title}${keys ? ` | keys=${keys}` : ''}\n${body}\n`;
+        if (used + piece.length > 18000) break;
+        chunks.push(piece);
+        used += piece.length;
+      }
+      return chunks.join('\n');
+    } catch (_) { return ''; }
+  }
+
   function currentCharacterSnapshot(ctx) {
     try {
       const id = ctx.characterId;
       const ch = id !== undefined && id !== null ? ctx.characters?.[Number(id)] : null;
       if (!ch) return '';
       const d = ch.data || ch;
-      return [
+      const ext = d.extensions || {};
+      const depthPrompt = typeof ext?.depth_prompt === 'string'
+        ? ext.depth_prompt
+        : (ext?.depth_prompt?.prompt || ext?.depth_prompt?.value || '');
+
+      const parts = [
         `Name: ${d.name || ch.name || ''}`,
-        `Description: ${d.description || ''}`,
-        `Personality: ${d.personality || ''}`,
-        `Scenario: ${d.scenario || ''}`,
-      ].join('\n').slice(0, 18000);
+        boundedText('Description', d.description, 7000),
+        boundedText('Personality', d.personality, 5000),
+        boundedText('Scenario', d.scenario, 7000),
+        boundedText('System Prompt', d.system_prompt, 9000),
+        boundedText('Post History Instructions', d.post_history_instructions, 9000),
+        boundedText('Depth Prompt', depthPrompt, 6000),
+        boundedText('First Message', d.first_mes, 5000),
+        boundedText('Message Examples', d.mes_example, 7000),
+        embeddedCharacterBookSnapshot(d),
+      ].filter(Boolean);
+      return parts.join('\n\n').slice(0, 42000);
+    } catch (_) { return ''; }
+  }
+
+  function currentExtensionPromptSnapshot(ctx) {
+    try {
+      const bag = ctx?.extensionPrompts || window?.extension_prompts || window?.extensionPrompts || {};
+      const rows = [];
+      for (const [id, item] of Object.entries(bag || {})) {
+        if (/^miemie_external_future_outline/i.test(id)) continue;
+        const value = typeof item === 'string' ? item : String(item?.value ?? item?.content ?? '');
+        const text = value.trim();
+        if (!text) continue;
+        const priority = /(database|state|story|plot|world|lore|memory|event|timeline|mvu|auto|chronicle|planner)/i.test(id) ? 0 : 1;
+        rows.push({ id, text, priority });
+      }
+      rows.sort((a,b) => a.priority - b.priority || a.id.localeCompare(b.id));
+
+      const chunks = [];
+      let used = 0;
+      for (const row of rows) {
+        const piece = `[EXTENSION PROMPT: ${row.id}]\n${row.text.slice(0, 12000)}\n`;
+        if (used + piece.length > 36000) {
+          if (row.priority === 0 && used < 34000) {
+            const remain = Math.max(0, 36000 - used);
+            if (remain > 300) chunks.push(piece.slice(0, remain));
+          }
+          break;
+        }
+        chunks.push(piece);
+        used += piece.length;
+      }
+      return chunks.join('\n');
     } catch (_) { return ''; }
   }
 
@@ -295,7 +398,7 @@ Không markdown. Không giải thích ngoài JSON.`
   }
 
   function emptyBranchStore() {
-    return { storeVersion: 1, outlineSchema: 4, candidates: {}, heads: {}, updatedAt: null };
+    return { storeVersion: 1, outlineSchema: 5, candidates: {}, heads: {}, updatedAt: null };
   }
 
   function getBranchStore(ctx = stContext()) {
@@ -303,7 +406,7 @@ Không markdown. Không giải thích ngoài JSON.`
     if (!raw || typeof raw !== 'object' || Number(raw.storeVersion) !== 1) return emptyBranchStore();
     return {
       storeVersion: 1,
-      outlineSchema: 4,
+      outlineSchema: 5,
       candidates: raw.candidates && typeof raw.candidates === 'object' ? raw.candidates : {},
       heads: raw.heads && typeof raw.heads === 'object' ? raw.heads : {},
       updatedAt: raw.updatedAt || null,
@@ -311,7 +414,7 @@ Không markdown. Không giải thích ngoài JSON.`
   }
 
   function validOutline(outline) {
-    return outline && typeof outline === 'object' && Number(outline.version) === 4;
+    return outline && typeof outline === 'object' && Number(outline.version) === 5;
   }
 
   function pruneBranchStore(store) {
@@ -433,6 +536,7 @@ Không markdown. Không giải thích ngoài JSON.`
     }).join('\n\n');
     const previous = validOutline(opts.previousOutline) ? opts.previousOutline : null;
     const wi = await activeWorldInfoSnapshot(ctx, chat);
+    const extPrompts = currentExtensionPromptSnapshot(ctx);
 
     const modeText = opts.isReroll
       ? `REROLL/REGENERATE OF THE SAME USER TURN
@@ -454,10 +558,11 @@ branch_base=${opts.baseKey || branchKeyFromMessages(chat)}
       ctx?.chatMetadata?.scenario ? `Chat scenario: ${String(ctx.chatMetadata.scenario).slice(0, 6000)}` : '',
       ctx?.chatMetadata?.persona ? `User persona: ${String(ctx.chatMetadata.persona).slice(0, 6000)}` : '',
       '=== ACTIVE WORLD INFO / LOREBOOK ===', wi || '(none activated)',
+      '=== CURRENT EXTENSION PROMPTS / DATABASE / STATE / PLOT DRIVE ===', extPrompts || '(none exposed)',
       '=== ACCEPTED PARENT OUTLINE ===', previous ? JSON.stringify(previous) : '(none)',
       '=== SELECTED-BRANCH RECENT CHAT ===', recent || '(empty)',
       '=== TASK ===',
-      `Update schema-v4 planner state for THIS branch/turn only. Apply newest user ESTABLISH first. Select scene_seed for the next main generation. On reroll, never import the rejected swipe and never reinterpret the repeated latest user input as a new post-result decision. Return JSON only.`,
+      `Update schema-v5 planner state for THIS branch/turn only. First classify scene_state and run the state-delta test. Apply newest user ESTABLISH first. Select scene_seed for the next main generation. On reroll, never import the rejected swipe and never reinterpret the repeated latest user input as a new post-result decision. Return JSON only.`,
     ].filter(Boolean).join('\n\n');
   }
 
@@ -533,28 +638,37 @@ branch_base=${opts.baseKey || branchKeyFromMessages(chat)}
     const rawSeed = value.scene_seed && typeof value.scene_seed === 'object' ? value.scene_seed : {};
     const modeRaw = String(rawSeed.mode || 'NONE').toUpperCase();
     const mode = ['MANDATORY_EARLY','OPTIONAL_EARLY','NONE'].includes(modeRaw) ? modeRaw : 'NONE';
+    const stateRaw = String(rawSeed.scene_state || 'STATIC_AFTER_ACTION').toUpperCase();
+    const scene_state = [
+      'ACTIVE_INTERACTION','EXPLICIT_DOWNTIME','PASSIVE_TRANSIT',
+      'PASSIVE_REST','STATIC_AFTER_ACTION','WORLD_BEAT_DUE'
+    ].includes(stateRaw) ? stateRaw : 'STATIC_AFTER_ACTION';
+
     const scene_seed = {
+      scene_state,
       mode,
       event: String(rawSeed.event || '').trim(),
       source: String(rawSeed.source || '').trim(),
       why_now: String(rawSeed.why_now || '').trim(),
       entry_action: String(rawSeed.entry_action || '').trim(),
       interaction_vector: String(rawSeed.interaction_vector || '').trim(),
+      state_delta: String(rawSeed.state_delta || '').trim(),
       stop_boundary: String(rawSeed.stop_boundary || '').trim(),
       involved: cleanStringArray(rawSeed.involved, 12),
       conditions_verified: cleanStringArray(rawSeed.conditions_verified, 10),
     };
+
     if (scene_seed.mode !== 'NONE') {
-      if (!scene_seed.event || !scene_seed.entry_action || !scene_seed.why_now || !scene_seed.stop_boundary) {
+      if (!scene_seed.event || !scene_seed.entry_action || !scene_seed.why_now || !scene_seed.stop_boundary || !scene_seed.state_delta) {
         scene_seed.mode = 'NONE';
       }
     }
     if (scene_seed.mode === 'NONE') {
       scene_seed.event = '';
       scene_seed.source = '';
-      scene_seed.why_now = '';
       scene_seed.entry_action = '';
       scene_seed.interaction_vector = '';
+      scene_seed.state_delta = '';
       scene_seed.stop_boundary = '';
       scene_seed.involved = [];
       scene_seed.conditions_verified = [];
@@ -609,8 +723,8 @@ branch_base=${opts.baseKey || branchKeyFromMessages(chat)}
       if (conditional.length >= 6) break;
     }
 
-    const out = { version: 4, scene_seed, objective_locked: objective, conditional, retired: retired.slice(0, 12) };
-    if (JSON.stringify(out).length > 28000) throw new Error('Outline vượt giới hạn 28k ký tự');
+    const out = { version: 5, scene_seed, objective_locked: objective, conditional, retired: retired.slice(0, 12) };
+    if (JSON.stringify(out).length > 30000) throw new Error('Outline vượt giới hạn 30k ký tự');
     return out;
   }
 
@@ -644,7 +758,7 @@ branch_base=${opts.baseKey || branchKeyFromMessages(chat)}
       for (const id of LEGACY_EXT_PROMPT_IDS) await ctx.setExtensionPrompt(id, '', 1, 0, false, 0);
     } catch (_) {}
 
-    if (!outline || Number(outline.version) !== 4) outline = null;
+    if (!outline || Number(outline.version) !== 5) outline = null;
     const seed = outline?.scene_seed || { mode:'NONE' };
     const baseKey = String(meta.baseKey || '');
     const turnId = String(meta.turnId || '');
@@ -665,25 +779,27 @@ ${JSON.stringify(seed)}
 - If a recent table/memory/wlog cache claims an event happened but the selected recent chat branch does not support it, treat that cache entry as stale swipe residue.
 - Never say "your previous choice" or "chapter-one choice" solely because a rejected swipe/cache remembers it.
 </external_branch_guard>
-<external_future_outline authority="EXCLUSIVE" mode="EXTERNAL" version="4" planner_version="${VERSION}"${attrs}>
+<external_future_outline authority="EXCLUSIVE" mode="EXTERNAL" version="5" planner_version="${VERSION}"${attrs}>
 [PRIVATE PLANNER STATE — NEVER REVEAL, SUMMARIZE, OR REWRITE TO USER]
 ${JSON.stringify(outline)}
 </external_future_outline>
 ${seedContent}
 <external_future_outline_lock>
-[RUNTIME HANDSHAKE: planner=${VERSION}; schema=4; branch_safe_reroll=true]
+[RUNTIME HANDSHAKE: planner=${VERSION}; schema=5; branch_safe_reroll=true]
 1. Future outline governs FUTURE continuity; scene seed governs CURRENT WORLD/NPC entry.
 2. The selected visible branch outranks stale recent cache/table/memory residue from rejected swipes.
 3. reroll=true means rejected assistant swipes DO NOT EXIST for continuity.
 4. MANDATORY_EARLY executes in the first 1-2 prose paragraphs, then the scene develops from it.
-5. NPC_INITIATES means the NPC may actually act/speak; do not summarize the whole exchange.
-6. No dialogue quota.
-7. Scene seed never authorizes user ability activation/effects, hidden knowledge, status flex, or narrator praise.
-8. seed=NONE does not freeze card/worldbook/world-backbone agency.
-9. next_hidden_step remains future-only.
-10. USER AUTHORITY remains highest for user-established facts.
-11. Canon encounters remain valid when route/time/location + prerequisites intersect.
-12. Skip competing INTERNAL future outline; output <future_outline>[Mode]: EXTERNAL</future_outline>.
+5. scene_state=PASSIVE_TRANSIT/PASSIVE_REST/STATIC_AFTER_ACTION is NOT permission for scenery-only output. If seed is NONE, main model must still consult card/worldbook/current extension-state and produce a grounded state delta unless user explicitly requested downtime.
+6. Decision boundary applies AFTER the world/NPC action is visible; never suppress a situation merely because user will need to react.
+7. NPC_INITIATES means the NPC may actually act/speak; do not summarize the whole exchange.
+8. No dialogue quota.
+9. Scene seed never authorizes user ability activation/effects, hidden knowledge, status flex, or narrator praise.
+10. seed=NONE does not freeze card/worldbook/world-backbone agency.
+11. next_hidden_step remains future-only.
+12. USER AUTHORITY remains highest for user-established facts.
+13. Canon encounters remain valid when route/time/location + prerequisites intersect.
+14. Skip competing INTERNAL future outline; output <future_outline>[Mode]: EXTERNAL</future_outline>.
 </external_future_outline_lock>` : '';
 
     await ctx.setExtensionPrompt(EXT_PROMPT_ID, content, 1, 0, false, 0);
@@ -776,7 +892,7 @@ ${seedContent}
       await injectOutline(liveCtx, outline, {
         baseKey, parentKey, turnId, isReroll, attempt:saved?.attempt || 1,
       });
-      setStatus(`${isReroll ? 'REROLL FRESH' : 'Đã cập nhật'} · ${turnId} · attempt ${saved?.attempt || 1} · seed=${outline.scene_seed?.mode || 'NONE'}`);
+      setStatus(`${isReroll ? 'REROLL FRESH' : 'Đã cập nhật'} · ${turnId} · attempt ${saved?.attempt || 1} · scene=${outline.scene_seed?.scene_state || '?'} · seed=${outline.scene_seed?.mode || 'NONE'}`);
       renderPreview();
     } catch (e) {
       if (!isReroll && existingSameBase?.outline) {
@@ -829,7 +945,7 @@ ${seedContent}
       <div class="mfp-row"><div><label>Timeout (ms)</label><input id="mfp-timeout" type="number" min="10000" max="180000" value="${esc(config.timeoutMs)}"></div><div><label>Strict lock</label><input value="ON · depth 0" disabled></div><div></div></div>
       <div class="mfp-actions"><button id="mfp-save">Lưu cấu hình</button><button id="mfp-test">Test + Load model</button><button id="mfp-run">Tính đại cương ngay</button><button id="mfp-clear">Xóa outline chat này</button></div>
       <div id="mfp-status" class="mfp-status"></div>
-      <div class="mfp-note">Planner chỉ lập đại cương kín. Nếu endpoint chặn CORS, hãy dùng URL proxy có cho phép browser request. Planner state lưu theo từng branch/swipe. Reroll tính fresh từ accepted parent; reload không resurrect outline chung cũ. Schema v4, depth 0.</div>
+      <div class="mfp-note">Planner chỉ lập đại cương kín. Nếu endpoint chặn CORS, hãy dùng URL proxy có cho phép browser request. Planner state theo branch/swipe. Schema v5 adds scene-state + WORLD PULSE and reads card/worldbook/current extension prompts (database/state/plot-drive) so passive scenes cannot hide behind filler.</div>
     </section>
     <section class="mfp-section">
       <h3>Đại cương hiện tại</h3>
@@ -1095,6 +1211,6 @@ ${seedContent}
   await injectOutline(stContext(), null);
 
   window[SCRIPT_KEY] = { version: VERSION, open: openUi, run: () => runPlanner({ manual:true, generationType:'manual' }), cleanup, getConfig: () => ({...config}) };
-  try { hostWindow.__MIEMIE_FUTURE_PLANNER_RUNTIME__ = { version: VERSION, schema: 4, branchSafeReroll: true, loadedAt: new Date().toISOString() }; } catch (_) {}
-  console.info(`[Miemie Future Planner] loaded v${VERSION}; schema=4; branch-safe-reroll=ON; UI host=${hostDocument === document ? 'script-frame' : 'parent-document'}`);
+  try { hostWindow.__MIEMIE_FUTURE_PLANNER_RUNTIME__ = { version: VERSION, schema: 5, branchSafeReroll: true, worldPulseContext: true, loadedAt: new Date().toISOString() }; } catch (_) {}
+  console.info(`[Miemie Future Planner] loaded v${VERSION}; schema=5; branch-safe-reroll=ON; UI host=${hostDocument === document ? 'script-frame' : 'parent-document'}`);
 })();

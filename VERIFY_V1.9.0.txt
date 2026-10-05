@@ -1,0 +1,9 @@
+Miemie Future Planner v1.9.0
+outline_schema=5
+storage=branch_store_v1
+BUILD=WORLD_PULSE_CONTEXT_SCHEMA5_2026-10-05
+branch_safe_reroll=ON
+extension_prompt_snapshot=ON
+card_directive_snapshot=ON
+scene_state_classifier=ON
+SHA256=62b2d48df0c233880a39041d036d4d54474219a0f12141b992f60bf3e2c2bbf6
