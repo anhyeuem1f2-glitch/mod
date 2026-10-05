@@ -1,8 +1,8 @@
 (async () => {
   'use strict';
 
-  const VERSION = '1.4.2';
-  const BUILD_MARKER = 'USER_AUTHORITY_CAUSAL_ROOT_FIXED_2026-09-30';
+  const VERSION = '1.5.0';
+  const BUILD_MARKER = 'USER_AUTHORITY_CANON_BACKBONE_2026-10-05';
   const SCRIPT_KEY = '__MIEMIE_FUTURE_PLANNER_EXTERNAL__';
   const BUTTON_NAME = 'Miemie Future Planner';
   const STORAGE_KEY = 'miemie_future_planner_external_config_v1';
@@ -32,103 +32,68 @@
     if (window[SCRIPT_KEY]?.cleanup) await window[SCRIPT_KEY].cleanup();
   } catch (_) {}
 
-  const PLANNER_SYSTEM = `Bạn là bộ lập đại cương tương lai KÍN cho một phiên nhập vai SillyTavern. Bạn KHÔNG viết chính văn, KHÔNG điều khiển <user>, KHÔNG khen <user>, KHÔNG tạo drama để giải trí. Nhiệm vụ duy nhất là duy trì một đại cương nhân quả ngắn, khách quan, có thể bị thay đổi bởi diễn biến mới để model kể chuyện chính bám theo.
+  const PLANNER_SYSTEM = `Bạn là bộ lập đại cương tương lai KÍN cho một phiên nhập vai đồng nhân/SillyTavern. Bạn KHÔNG viết chính văn và KHÔNG điều khiển <user>. Nhiệm vụ là giữ cho thế giới CHỦ ĐỘNG vận hành, đặc biệt là canon/world mainline, trong khi mọi hành động/kết quả mà <user> trực tiếp ESTABLISH vẫn có quyền cao nhất.
 
-QUY TẮC BẮT BUỘC — ƯU TIÊN CAO NHẤT:
+QUY TẮC ƯU TIÊN:
 
-0. CANON KHÔNG PHẢI ĐỊNH MỆNH CỦA <user>
-- Dòng thời gian/nguyên tác chỉ là dữ liệu tham chiếu về thế giới, KHÔNG phải kịch bản bắt buộc phải tái diễn với <user>.
-- Tuyệt đối cấm lấy một sự kiện từng xảy ra với nhân vật chính nguyên tác rồi thay tên nhân vật chính bằng <user> và gọi nó là OBJECTIVE_LOCKED.
-- Một cuộc gặp, lời mời, trận chiến, nhiệm vụ, quan hệ hay cảnh tương tác cần <user> có mặt/đi tới/chấp nhận/thực hiện hành động thì KHÔNG phải sự kiện khách quan cố định.
-- Ví dụ: “Rudeus gặp Ruijerd trong nguyên tác” KHÔNG chứng minh “<user> chắc chắn gặp Ruijerd”. Chỉ khi trạng thái hiện tại tạo ra đường nhân quả độc lập và hợp lý thì nó mới có thể trở thành CONDITIONAL.
+0. USER AUTHORITY VÀ WORLD AGENCY CÙNG TỒN TẠI
+- ESTABLISH của <user> là immutable root fact: áp vào state trước, không veto/cancel/reroute.
+- Sau POST_USER_STATE, thế giới KHÔNG đứng im. Canon/NPC/tổ chức/sự kiện có nguyên nhân độc lập vẫn tiếp tục.
+- Không yêu cầu mọi future event phải là hậu quả của user.
 
-1. PHÂN BIỆT OBJECTIVE_LOCKED VÀ CONDITIONAL BẰNG BÀI TEST ĐỘC LẬP
-- OBJECTIVE_LOCKED chỉ hợp lệ nếu trả lời CÓ cho câu hỏi: “Nếu <user> lập tức rời khu vực, không làm gì thêm, từ chối tham gia hoặc biến mất khỏi tuyến này, LÕI SỰ KIỆN CHÍNH XÁC NÀY vẫn xảy ra vì nguyên nhân riêng của thế giới chứ?”
-- Nếu câu trả lời là KHÔNG hoặc KHÔNG CHẮC -> chuyển sang CONDITIONAL hoặc bỏ hẳn.
-- OBJECTIVE_LOCKED phải ghi independence_test rõ ràng. Không có independence_test đáng tin -> không được giữ trong objective_locked.
-- Canon/timeline một mình không đủ làm căn cứ OBJECTIVE_LOCKED nếu sự kiện phụ thuộc vào nhân vật chính nguyên tác.
-- fixed_core của OBJECTIVE_LOCKED không được là “NPC X gặp/tiếp cận/bảo vệ/theo dõi/mời/tấn công <user>”.
-- Một NPC cụ thể chủ động tiến tới <user> do dấu vết/hành động của <user> luôn là CONDITIONAL, vì nếu <user> đổi vị trí, che dấu vết hoặc rời khu vực thì cuộc tiếp xúc có thể không xảy ra.
-- Nếu một event có tên dạng ‘Gặp X’, ‘X tiếp cận <user>’, ‘X điều tra <user>’, ‘X bảo vệ <user>’ thì mặc định loại khỏi OBJECTIVE_LOCKED, bất kể canon từng xảy ra thế nào.
+1. CANON BACKBONE = DEFAULT WORLD MOTION, KHÔNG PHẢI USER DESTINY
+- Timeline/canon cho biết world actors sẽ làm gì nếu prerequisite chưa bị butterfly effect phá.
+- Event canon tới hạn + đủ prerequisite phải được giữ như ACTIVE/SCHEDULED world thread, không xóa chỉ vì user chưa tác động.
+- Outcome/relationship của protagonist canon không tự áp lên user.
+- Nếu user phá một prerequisite, chỉ retire/diverge phần bị phá; không xóa toàn bộ canon backbone.
 
-2. USER INPUT LÀ CAUSAL ROOT CAO NHẤT
-- Phân loại newest user turn:
-  A) ESTABLISH/DECLARATIVE: user xác lập hành động/kết quả như fact.
-  B) ATTEMPT/UNCERTAIN: user nói thử/cố/xem có được không hoặc yêu cầu phán định.
-  C) META/QUESTION.
-- Với ESTABLISH: planner PHẢI áp hành động/kết quả vào state trước. Nó là IMMUTABLE ROOT FACT của lượt này.
-- Không được dùng old world state, canon, NPC, logistics, luật, tiền, lịch trình, khả năng hay bất kỳ blocker nào để cancel/downgrade/reroute ROOT FACT.
-- Nếu state cũ xung đột ROOT FACT: state cũ phải diverge/reconcile; user input thắng.
-- Chỉ sau khi tạo POST-USER STATE mới được lập future threads từ hậu quả của state đó.
-- cancel_conditions/downgrade_conditions/escalation_gate KHÔNG bao giờ áp lên ROOT FACT; chúng chỉ áp lên event tương lai của NPC/thế giới.
-- Với ATTEMPT: việc user đã thử là fact, nhưng outcome chưa cố định; planner có thể giữ nhiều nhánh kết quả dựa trên state.
-- Với META/QUESTION: không biến thành event in-world.
-- Không tạo future thread có event chính là hành động user vừa declaratively xác lập. Chỉ theo dõi downstream consequences.
+2. OBJECTIVE_LOCKED
+OBJECTIVE_LOCKED dùng cho LÕI WORLD EVENT vẫn xảy ra không phụ thuộc lựa chọn user, ví dụ một băng hải tặc tới đảo, một cuộc chiến giữa NPC, một lễ hội, một tổ chức ra tay.
+- independence_test vẫn bắt buộc.
+- Canon/timeline CÓ THỂ là căn cứ nếu event core thật sự do world actors tự thực hiện và prerequisites intact.
+- Không ghi fixed_core kiểu "<user> chắc chắn gặp X".
 
-3. CONDITIONAL PHẢI THỰC SỰ CÓ THỂ BỊ HỦY
-- CONDITIONAL sinh từ hành động, quan hệ, hiểu lầm, lợi ích hoặc xung đột có thể thay đổi.
-- Phải có activation_conditions và cancel_conditions; nếu thích hợp thì có downgrade_conditions.
-- Khi điều kiện hủy đã thực sự xảy ra, retire tuyến đó. Tuyệt đối không bịa “ngoài mặt hòa giải nhưng trong lòng vẫn...” chỉ để cứu event.
-- Mọi bước leo thang phải có escalation_gate. Không nhảy từ chuyện cá nhân sang chiến tranh/tận thế nếu không tồn tại cơ chế độc lập tương ứng.
+3. CANON ENCOUNTER = CONDITIONAL INTERSECTION, VÀ ĐƯỢC KHUYẾN KHÍCH
+Nếu:
+- canon NPC/event đang ACTIVE/SCHEDULED_ELIGIBLE;
+- route/time/location của user giao hợp lý;
+- user root không loại bỏ giao cắt;
+thì tạo CONDITIONAL encounter/hook như "tàu của X xuất hiện trên cùng tuyến", "user tới đảo đúng lúc event Y đang diễn ra", "NPC X bước vào địa điểm hiện tại".
+Đây KHÔNG phải protagonist-centric convenience vì có causal intersection.
+- activation_conditions phải là co-location/time/prerequisite thật.
+- cancel_conditions có thể là user đổi route/tránh khu vực trước khi encounter xảy ra.
+- Không quyết định user sẽ chấp nhận nhiệm vụ, thân thiết, chiến đấu hay đi cùng.
 
-4. DẤU HIỆU KÍN — MẶC ĐỊNH LÀ KHÔNG CÀI
-- subtle_sign_candidates được phép là [] và đây là lựa chọn mặc định nếu không có chi tiết thật sự tự nhiên.
-- Dấu hiệu phải là một dữ kiện cảm giác/đời thường nhỏ, có thể bị bỏ qua hoàn toàn khi đọc lần đầu và KHÔNG tự mang ý nghĩa “đang có chuyện”.
-- Dấu hiệu không được nêu tên tác nhân/sự kiện tương lai, không được chứa đặc điểm nhận dạng quá đặc thù đủ để đoán ra tác nhân.
-- CẤM các dạng: bóng người bí ẩn, người đứng xa quan sát, ánh mắt theo dõi, silhouette cầm vũ khí đặc trưng, tiếng cười bí hiểm, lời thoại úp mở, “có ai đó đang nhìn”, “có gì đó không ổn”, “đáng chú ý”, “bất thường”, “điềm báo”, “như thể báo hiệu”, “sắp có chuyện”, “linh cảm”, “một cảm giác khó tả”.
-- CẤM suy luận thay <user>: không viết <user> nhận ra/nghi ngờ/hiểu/ghi nhớ/cảm thấy chi tiết là bất thường.
-- Nếu một dấu hiệu chỉ có tác dụng khi narrator phải giải thích nó liên quan tới event tương lai, đó là dấu hiệu KHÔNG HỢP LỆ.
-- Ví dụ hợp lệ hơn: một hóa đơn bị trì hoãn, lịch trực đổi người, một quầy hàng đóng sớm, dấu bánh xe mới trên đường, một căn phòng vốn sáng nay nay tắt đèn — nhưng chỉ khi những chi tiết đó thật sự có đường nhân quả với outline và hợp cảnh hiện tại.
+4. OPEN-DIRECTION MODE
+Nếu newest user input để hướng mở như "đi đâu cũng được", "cứ tiến về phía trước", "tiếp tục hành trình" hoặc không chọn destination:
+- planner NÊN chọn canon/world waypoint hợp lý gần nhất;
+- ưu tiên event/NPC canon cụ thể hơn filler vô định;
+- tạo encounter/hook để main model có thứ thật sự xảy ra.
+Nếu user đã chỉ destination cụ thể, destination đó thắng.
 
-5. QUY MÔ + NPC LIÊN QUAN
-- Mọi tuyến phải có nguyên nhân, phạm vi và NPC/tổ chức liên quan hợp lý.
-- NPC chỉ tham gia khi có đường thông tin/lợi ích/nghĩa vụ/quan hệ thật sự.
-- Không kéo NPC canon nổi tiếng vào chỉ vì họ nổi tiếng hoặc vì muốn tăng độ lớn câu chuyện.
-- Ưu tiên cập nhật tuyến cũ hơn là tạo tuyến mới. Tối đa 6 tuyến hoạt động, không cần đủ số lượng.
+5. USER ROOT
+- ESTABLISH: apply first; immutable.
+- ATTEMPT: attempt happened; outcome may branch.
+- META/QUESTION: not an in-world event.
 
-6. KHÔNG SUY LUẬN THAY <user>
-- Không ghi “<user> sẽ...”, “<user> nhận ra...”, “<user> quyết định...”, “<user> chắc chắn...”.
-- Nếu một nhánh phụ thuộc <user>, chỉ được mô tả bằng điều kiện khách quan: “Nếu <user> làm X thì...”.
+6. BUTTERFLY LEDGER
+Mỗi canon thread phải được hiểu như INTACT / SCHEDULED_ELIGIBLE / ACTIVE / DIVERGED / INVALIDATED / REBUILT trên POST_USER_STATE.
+Không snap-back outcome đã mất prerequisite.
 
-7. CHỈ XUẤT JSON HỢP LỆ, KHÔNG MARKDOWN, KHÔNG GIẢI THÍCH NGOÀI JSON.
+7. NO EMPTY FUTURE
+- Nếu current scene đang đi lại/vô định và có canon backbone hợp lệ gần đó, đừng trả outline rỗng chỉ vì event không do user gây ra.
+- Planner phải cung cấp ít nhất một world thread hoặc encounter candidate khi context thật sự có canon/world motion đáng kể.
+- Không tạo drama ngẫu nhiên nếu không có căn cứ.
 
-SCHEMA:
-{
-  "version": 2,
-  "objective_locked": [
-    {
-      "id": "O1",
-      "event": "mô tả ngắn",
-      "basis": "nguyên nhân độc lập đã được thiết lập",
-      "source_basis": "world_state|worldbook|established_event|mixed",
-      "independence_test": "Nếu <user> biến mất khỏi tuyến này thì sự kiện vẫn xảy ra vì...",
-      "phase": "dormant|forming|approaching|active",
-      "fixed_core": "phần không thể tránh",
-      "user_can_change": "phần có thể tác động hoặc unknown",
-      "next_hidden_step": "bước ngoài màn hình tiếp theo hoặc null",
-      "earliest_touchpoint": "khi nào có thể chạm tới cảnh user hoặc null",
-      "subtle_sign_candidates": ["0-3 chi tiết cực nhỏ; để [] nếu không cần"]
-    }
-  ],
-  "conditional": [
-    {
-      "id": "C1",
-      "event": "mô tả ngắn",
-      "cause": "nguyên nhân hiện có",
-      "phase": "seed|forming|escalating|active|cooling",
-      "involved": ["NPC/tổ chức thực sự liên quan"],
-      "activation_conditions": ["điều kiện tiếp tục/kích hoạt"],
-      "cancel_conditions": ["điều kiện khiến tuyến phải hủy"],
-      "downgrade_conditions": ["điều kiện làm giảm quy mô"],
-      "escalation_gate": "điều kiện bắt buộc trước khi tăng quy mô",
-      "next_hidden_step": "bước ngoài màn hình tiếp theo hoặc null",
-      "subtle_sign_candidates": ["0-3 chi tiết cực nhỏ; để [] nếu không cần"]
-    }
-  ],
-  "retired": [
-    {"id": "C0", "reason": "resolved|cancelled|invalidated|failed_independence_test"}
-  ]
-}`;
+8. FORESHADOWING
+- subtle_sign_candidates được phép [] và thường nên [] nếu encounter đã tới hạn.
+- Khi encounter/event đã đủ điều kiện xuất hiện, ưu tiên event thật thay vì kéo dài bằng dấu hiệu mơ hồ.
+
+9. KHÔNG SUY LUẬN THAY USER
+Không viết user nhận ra/đoán/chọn/đồng ý. Chỉ lập world state và encounter opportunity.
+
+10. JSON ONLY
+Giữ schema v2 hiện tại. objective_locked cho world events độc lập. conditional cho encounter/opportunity có thể đổi theo route/quan hệ. retired cho thread đã mất prerequisite.`;
 
   const defaults = {
     enabled: false,
@@ -323,7 +288,7 @@ SCHEMA:
       '=== PREVIOUS FUTURE OUTLINE ===', previous ? JSON.stringify(previous) : '(none)',
       '=== RECENT CHAT ===', recent || '(empty)',
       '=== TASK ===',
-      `Update the private future outline from the current state. Preserve valid old threads, retire invalidated conditional threads, and add only well-supported new threads. Classify the newest user turn as ESTABLISH, ATTEMPT, or META. For ESTABLISH, first apply the user's declared action/result as the highest-authority immutable causal root and build the outline only from the post-user state. Never cancel, downgrade, reroute, delay, or veto that root because of old world state, canon, NPCs, logistics, or prior facts. For ATTEMPT, the attempt itself is fixed but its outcome may be calculated. Return only JSON following the schema.`,
+      `Update the private future outline from the current state. Preserve valid old threads, retire invalidated conditional threads, and add only well-supported new threads. Classify the newest user turn as ESTABLISH, ATTEMPT, or META. Apply ESTABLISH first as immutable user state. Then continue independent canon/world backbone processes from the post-user state. If canon time/location/prerequisites intersect the user route, create a conditional canon encounter/hook instead of leaving the outline empty. Never force the user's reaction or canon outcome. Return only JSON following the schema.`,
     ].filter(Boolean).join('\n\n');
   }
 
@@ -490,12 +455,12 @@ ${JSON.stringify(outline)}
 5. Foreshadowing is OPTIONAL. Use at most ONE item from subtle_sign_candidates only when it fits the current place/time naturally. If none fits, use no sign.
 6. A sign must be written only as a literal mundane detail. Do not identify its future actor/event, do not explain why it matters, do not add narrator emphasis, and do not infer <user>'s reaction.
 7. Never turn next_hidden_step into an on-screen fact until it has actually occurred and has a valid information/causal path into the current scene.
-8. Other reasoning modules (causality, butterfly effect, world log, NPC reasoning) MUST NOT introduce a named future NPC/event absent from this external outline. Canon references cannot create a new future thread.
+8. Other reasoning modules should prefer named future NPC/events present in this external outline. A validated canon backbone event may also activate when its time/prerequisites are already established in current world state; canon is not forbidden from moving merely because user did not cause it.
 9. USER AUTHORITY IS HIGHEST. Classify the newest user turn as ESTABLISH / ATTEMPT / META.
 10. If ESTABLISH: apply the declared user action/result to state FIRST as an immutable causal root. Old facts, canon, NPC opposition, logistics, rules, costs, travel restrictions, missing routes, outages, or prior assumptions may NOT veto that root. Reconcile the old state around the user's declaration.
 11. If ATTEMPT: the attempt itself happened; only the unresolved outcome may be calculated.
-12. All causality, butterfly effects, NPC reactions, world logs, and future threads must be derived from the POST-USER STATE.
-13. Before writing story_scene, silently delete any planned future encounter inferred only from canon or from protagonist-centric convenience.
+12. Apply USER ROOT first. Then derive user-related consequences from POST-USER STATE AND continue independent WORLD/CANON BACKBONE processes whose prerequisites remain valid.
+13. Before story_scene, delete only canon encounters that FAIL prerequisite/intersection validation. KEEP canon encounters that are supported by active/scheduled canon backbone + current route/time/location. Do not force the user response or outcome.
 </external_future_outline_lock>` : '';
     // Strict mode always injects nearest to generation; old saved depth settings cannot weaken the lock.
     await ctx.setExtensionPrompt(EXT_PROMPT_ID, content, 1, 0, false, 0);
