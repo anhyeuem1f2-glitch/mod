@@ -1,8 +1,8 @@
 (async () => {
   'use strict';
 
-  const VERSION = '1.9.0';
-  const BUILD_MARKER = 'WORLD_PULSE_CONTEXT_SCHEMA5_2026-10-05';
+  const VERSION = '1.10.0';
+  const BUILD_MARKER = 'AFTER_COMMANDS_NPC_VIS_LENGTH_AUDIT_SCHEMA6_2026-10-06';
   const SCRIPT_KEY = '__MIEMIE_FUTURE_PLANNER_EXTERNAL__';
   const BUTTON_NAME = 'Miemie Future Planner';
   const STORAGE_KEY = 'miemie_future_planner_external_config_v1';
@@ -119,15 +119,25 @@ Không được trả seed=NONE chỉ vì event không nằm trong previous futu
 - Seed chỉ điều khiển WORLD/NPC.
 - Không tự kích hoạt user ability/effect, không cấp hidden knowledge, không status-flex, không narrator praise.
 
-8. FUTURE OUTLINE
+8. NPC KNOWLEDGE / PUBLIC EXPOSURE
+- Persona, player status, MVU, database, ability list, actual bounty and planner state are GM truth, NOT automatically NPC knowledge.
+- An involved NPC may use a fact about <user> only if recent accepted chat/current state supports one acquisition path:
+  OBSERVED / TOLD / RECORD_SEEN / PRIOR_ACQUIRED / PUBLIC_RECORD_ACCESS.
+- A bounty existing in a database does NOT mean every NPC has seen the poster.
+- A power existing in Persona/status does NOT mean an NPC knows it.
+- One observed feat only reveals that feat, not the complete power tier.
+- Never create "huge bounty", "monster-like strength", fear/awe or reputation hype merely to make <user> special.
+- scene_seed must return npc_visible_user_facts. If the array is empty, involved NPCs must not mention hidden bounty/power/ability/identity facts.
+
+9. FUTURE OUTLINE
 - objective_locked / conditional là TƯƠNG LAI.
 - next_hidden_step không phải current seed.
 - subtle_sign chỉ dùng khi event chưa tới hạn.
 - Butterfly phá prerequisite -> DIVERGED/INVALIDATED; phần còn nguyên vẫn chạy.
 
-9. OUTPUT JSON ONLY — SCHEMA v5
+10. OUTPUT JSON ONLY — SCHEMA v6
 {
-  "version": 5,
+  "version": 6,
   "scene_seed": {
     "scene_state": "ACTIVE_INTERACTION|EXPLICIT_DOWNTIME|PASSIVE_TRANSIT|PASSIVE_REST|STATIC_AFTER_ACTION|WORLD_BEAT_DUE",
     "mode": "MANDATORY_EARLY|OPTIONAL_EARLY|NONE",
@@ -139,6 +149,7 @@ Không được trả seed=NONE chỉ vì event không nằm trong previous futu
     "state_delta": "",
     "stop_boundary": "",
     "involved": [],
+    "npc_visible_user_facts": [],
     "conditions_verified": []
   },
   "objective_locked": [],
@@ -398,7 +409,7 @@ Không markdown. Không giải thích ngoài JSON.`
   }
 
   function emptyBranchStore() {
-    return { storeVersion: 1, outlineSchema: 5, candidates: {}, heads: {}, updatedAt: null };
+    return { storeVersion: 1, outlineSchema: 6, candidates: {}, heads: {}, updatedAt: null };
   }
 
   function getBranchStore(ctx = stContext()) {
@@ -406,7 +417,7 @@ Không markdown. Không giải thích ngoài JSON.`
     if (!raw || typeof raw !== 'object' || Number(raw.storeVersion) !== 1) return emptyBranchStore();
     return {
       storeVersion: 1,
-      outlineSchema: 5,
+      outlineSchema: 6,
       candidates: raw.candidates && typeof raw.candidates === 'object' ? raw.candidates : {},
       heads: raw.heads && typeof raw.heads === 'object' ? raw.heads : {},
       updatedAt: raw.updatedAt || null,
@@ -414,7 +425,7 @@ Không markdown. Không giải thích ngoài JSON.`
   }
 
   function validOutline(outline) {
-    return outline && typeof outline === 'object' && Number(outline.version) === 5;
+    return outline && typeof outline === 'object' && Number(outline.version) === 6;
   }
 
   function pruneBranchStore(store) {
@@ -562,7 +573,7 @@ branch_base=${opts.baseKey || branchKeyFromMessages(chat)}
       '=== ACCEPTED PARENT OUTLINE ===', previous ? JSON.stringify(previous) : '(none)',
       '=== SELECTED-BRANCH RECENT CHAT ===', recent || '(empty)',
       '=== TASK ===',
-      `Update schema-v5 planner state for THIS branch/turn only. First classify scene_state and run the state-delta test. Apply newest user ESTABLISH first. Select scene_seed for the next main generation. On reroll, never import the rejected swipe and never reinterpret the repeated latest user input as a new post-result decision. Return JSON only.`,
+      `Update schema-v6 planner state for THIS branch/turn only. First classify scene_state and run the state-delta test. For every involved NPC, derive npc_visible_user_facts ONLY from accepted acquisition paths; status/database facts alone are not visible. Apply newest user ESTABLISH first. Select scene_seed for the next main generation. On reroll, never import the rejected swipe and never reinterpret the repeated latest user input as a new post-result decision. Return JSON only.`,
     ].filter(Boolean).join('\n\n');
   }
 
@@ -655,6 +666,7 @@ branch_base=${opts.baseKey || branchKeyFromMessages(chat)}
       state_delta: String(rawSeed.state_delta || '').trim(),
       stop_boundary: String(rawSeed.stop_boundary || '').trim(),
       involved: cleanStringArray(rawSeed.involved, 12),
+      npc_visible_user_facts: cleanStringArray(rawSeed.npc_visible_user_facts, 16),
       conditions_verified: cleanStringArray(rawSeed.conditions_verified, 10),
     };
 
@@ -671,6 +683,7 @@ branch_base=${opts.baseKey || branchKeyFromMessages(chat)}
       scene_seed.state_delta = '';
       scene_seed.stop_boundary = '';
       scene_seed.involved = [];
+      scene_seed.npc_visible_user_facts = [];
       scene_seed.conditions_verified = [];
     }
 
@@ -723,7 +736,7 @@ branch_base=${opts.baseKey || branchKeyFromMessages(chat)}
       if (conditional.length >= 6) break;
     }
 
-    const out = { version: 5, scene_seed, objective_locked: objective, conditional, retired: retired.slice(0, 12) };
+    const out = { version: 6, scene_seed, objective_locked: objective, conditional, retired: retired.slice(0, 12) };
     if (JSON.stringify(out).length > 30000) throw new Error('Outline vượt giới hạn 30k ký tự');
     return out;
   }
@@ -758,7 +771,7 @@ branch_base=${opts.baseKey || branchKeyFromMessages(chat)}
       for (const id of LEGACY_EXT_PROMPT_IDS) await ctx.setExtensionPrompt(id, '', 1, 0, false, 0);
     } catch (_) {}
 
-    if (!outline || Number(outline.version) !== 5) outline = null;
+    if (!outline || Number(outline.version) !== 6) outline = null;
     const seed = outline?.scene_seed || { mode:'NONE' };
     const baseKey = String(meta.baseKey || '');
     const turnId = String(meta.turnId || '');
@@ -779,13 +792,13 @@ ${JSON.stringify(seed)}
 - If a recent table/memory/wlog cache claims an event happened but the selected recent chat branch does not support it, treat that cache entry as stale swipe residue.
 - Never say "your previous choice" or "chapter-one choice" solely because a rejected swipe/cache remembers it.
 </external_branch_guard>
-<external_future_outline authority="EXCLUSIVE" mode="EXTERNAL" version="5" planner_version="${VERSION}"${attrs}>
+<external_future_outline authority="EXCLUSIVE" mode="EXTERNAL" version="6" planner_version="${VERSION}"${attrs}>
 [PRIVATE PLANNER STATE — NEVER REVEAL, SUMMARIZE, OR REWRITE TO USER]
 ${JSON.stringify(outline)}
 </external_future_outline>
 ${seedContent}
 <external_future_outline_lock>
-[RUNTIME HANDSHAKE: planner=${VERSION}; schema=5; branch_safe_reroll=true]
+[RUNTIME HANDSHAKE: planner=${VERSION}; schema=6; branch_safe_reroll=true]
 1. Future outline governs FUTURE continuity; scene seed governs CURRENT WORLD/NPC entry.
 2. The selected visible branch outranks stale recent cache/table/memory residue from rejected swipes.
 3. reroll=true means rejected assistant swipes DO NOT EXIST for continuity.
@@ -796,10 +809,12 @@ ${seedContent}
 8. No dialogue quota.
 9. Scene seed never authorizes user ability activation/effects, hidden knowledge, status flex, or narrator praise.
 10. seed=NONE does not freeze card/worldbook/world-backbone agency.
-11. next_hidden_step remains future-only.
-12. USER AUTHORITY remains highest for user-established facts.
-13. Canon encounters remain valid when route/time/location + prerequisites intersect.
-14. Skip competing INTERNAL future outline; output <future_outline>[Mode]: EXTERNAL</future_outline>.
+11. NPC VISIBILITY: scene_seed.npc_visible_user_facts is the whitelist for involved NPCs. Persona/status/database facts not listed there remain GM-only. Empty list means no hidden bounty/power/ability/identity claims.
+12. Never use "huge bounty", "monster strength", fear/awe or reputation hype unless the underlying fact is both acquired and causally relevant.
+13. next_hidden_step remains future-only.
+14. USER AUTHORITY remains highest for user-established facts.
+15. Canon encounters remain valid when route/time/location + prerequisites intersect.
+16. Skip competing INTERNAL future outline; output <future_outline>[Mode]: EXTERNAL</future_outline>.
 </external_future_outline_lock>` : '';
 
     await ctx.setExtensionPrompt(EXT_PROMPT_ID, content, 1, 0, false, 0);
@@ -863,6 +878,7 @@ ${seedContent}
     if (!config.baseUrl || !config.model) {
       if (existingSameBase && !isReroll) {
         await injectOutline(ctx, existingSameBase.outline, { ...existingSameBase, baseKey, turnId, isReroll:false });
+        rememberPreparedInjection(existingSameBase.outline, { ...existingSameBase, baseKey, turnId, isReroll:false });
         setStatus('Thiếu Base URL/model; chỉ dùng candidate của ĐÚNG branch hiện tại.');
       } else {
         await injectOutline(ctx, null);
@@ -892,11 +908,15 @@ ${seedContent}
       await injectOutline(liveCtx, outline, {
         baseKey, parentKey, turnId, isReroll, attempt:saved?.attempt || 1,
       });
+      rememberPreparedInjection(outline, {
+        baseKey, parentKey, turnId, isReroll, attempt:saved?.attempt || 1,
+      });
       setStatus(`${isReroll ? 'REROLL FRESH' : 'Đã cập nhật'} · ${turnId} · attempt ${saved?.attempt || 1} · scene=${outline.scene_seed?.scene_state || '?'} · seed=${outline.scene_seed?.mode || 'NONE'}`);
       renderPreview();
     } catch (e) {
       if (!isReroll && existingSameBase?.outline) {
         await injectOutline(ctx, existingSameBase.outline, { ...existingSameBase, baseKey, turnId, isReroll:false });
+        rememberPreparedInjection(existingSameBase.outline, { ...existingSameBase, baseKey, turnId, isReroll:false });
         setStatus(`Model phụ lỗi; chỉ fallback candidate CÙNG branch. ${e?.message || e}`);
       } else {
         await injectOutline(ctx, null);
@@ -945,7 +965,7 @@ ${seedContent}
       <div class="mfp-row"><div><label>Timeout (ms)</label><input id="mfp-timeout" type="number" min="10000" max="180000" value="${esc(config.timeoutMs)}"></div><div><label>Strict lock</label><input value="ON · depth 0" disabled></div><div></div></div>
       <div class="mfp-actions"><button id="mfp-save">Lưu cấu hình</button><button id="mfp-test">Test + Load model</button><button id="mfp-run">Tính đại cương ngay</button><button id="mfp-clear">Xóa outline chat này</button></div>
       <div id="mfp-status" class="mfp-status"></div>
-      <div class="mfp-note">Planner chỉ lập đại cương kín. Nếu endpoint chặn CORS, hãy dùng URL proxy có cho phép browser request. Planner state theo branch/swipe. Schema v5 adds scene-state + WORLD PULSE and reads card/worldbook/current extension prompts (database/state/plot-drive) so passive scenes cannot hide behind filler.</div>
+      <div class="mfp-note">Planner chỉ lập đại cương kín. Nếu endpoint chặn CORS, hãy dùng URL proxy có cho phép browser request. Planner v1.10: AFTER_COMMANDS timing + pre-combine reinjection, schema v6 NPC visibility whitelist, branch-safe reroll, WORLD PULSE, and real story word audit.</div>
     </section>
     <section class="mfp-section">
       <h3>Đại cương hiện tại</h3>
@@ -1108,28 +1128,93 @@ ${seedContent}
     hostDocument.body.appendChild(fallbackButton);
   }
 
+  let preparedGenerationInjection = null;
+  let activeLengthContract = null;
+  let lastLengthAudit = null;
+
+  function rememberPreparedInjection(outline, meta = {}) {
+    preparedGenerationInjection = outline ? { outline, meta:{...meta}, at:Date.now() } : null;
+  }
+
+  function parseLengthContractFromPrompt(chat) {
+    try {
+      const text = Array.isArray(chat)
+        ? chat.map(x => String(x?.content ?? x?.mes ?? '')).join('\n')
+        : String(chat || '');
+      const m = text.match(/\[MIEMIE_LENGTH_CONTRACT\s+target_words=(\d+)\s+min_words=(\d+)\]/i);
+      if (!m) return null;
+      return { target:Number(m[1]), min:Number(m[2]), capturedAt:Date.now() };
+    } catch (_) { return null; }
+  }
+
+  function storyTextForWordCount(message) {
+    let text = String(message || '');
+    const scene = text.match(/<story_scene\b[^>]*>([\s\S]*?)<\/story_scene>/i);
+    if (scene) text = scene[1];
+
+    text = text
+      .replace(/```[\s\S]*?```/g, ' ')
+      .replace(/<style\b[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<(?:status|memory_log|wlog|affinity|image_prompt|future_outline|story_driver)\b[\s\S]*?<\/(?:status|memory_log|wlog|affinity|image_prompt|future_outline|story_driver)>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/!\[[^\]]*\]\([^)]+\)/g, ' ')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .replace(/[*_~`>#|{}\[\]]/g, ' ');
+
+    return text.replace(/\s+/g, ' ').trim();
+  }
+
+  function countWords(text) {
+    try {
+      return (String(text || '').match(/[\p{L}\p{N}]+(?:['’\-][\p{L}\p{N}]+)*/gu) || []).length;
+    } catch (_) {
+      return String(text || '').trim().split(/\s+/).filter(Boolean).length;
+    }
+  }
+
+  function auditMessageLength(ctx, messageId) {
+    if (!activeLengthContract || !ctx?.chat?.[messageId]) return null;
+    const words = countWords(storyTextForWordCount(ctx.chat[messageId].mes || ''));
+    const result = {
+      words,
+      target: activeLengthContract.target,
+      min: activeLengthContract.min,
+      pass: words >= activeLengthContract.min,
+      at: Date.now(),
+      messageId,
+    };
+    lastLengthAudit = result;
+    try {
+      const rt = hostWindow.__MIEMIE_FUTURE_PLANNER_RUNTIME__ || {};
+      hostWindow.__MIEMIE_FUTURE_PLANNER_RUNTIME__ = { ...rt, lastLengthAudit:result };
+    } catch (_) {}
+    return result;
+  }
+
   function registerGenerationEvents() {
     const ctx = stContext();
     const types = ctx?.eventTypes || ctx?.event_types || window.tavern_events || {};
-    const genEvent = types.GENERATION_STARTED || types.generation_started || 'generation_started';
+    const genEvent = types.GENERATION_AFTER_COMMANDS || types.generation_after_commands || 'GENERATION_AFTER_COMMANDS';
     const chatEvent = types.CHAT_CHANGED || types.chat_changed || 'chat_changed';
     const receivedEvent = types.MESSAGE_RECEIVED || types.message_received || 'message_received';
     const swipedEvent = types.MESSAGE_SWIPED || types.message_swiped || 'message_swiped';
     const editedEvent = types.MESSAGE_EDITED || types.message_edited || 'message_edited';
     const deletedEvent = types.MESSAGE_DELETED || types.message_deleted || 'message_deleted';
+    const beforeCombineEvent = types.GENERATE_BEFORE_COMBINE_PROMPTS || types.generate_before_combine_prompts || 'generate_before_combine_prompts';
+    const promptReadyEvent = types.CHAT_COMPLETION_PROMPT_READY || types.chat_completion_prompt_ready || 'chat_completion_prompt_ready';
 
     const onFn = (eventName, handler) => {
-      try {
-        if (typeof eventOn === 'function') {
-          eventOn(eventName, handler);
-          listeners.push({ kind:'th', eventName, handler });
-          return;
-        }
-      } catch (_) {}
       try {
         if (ctx?.eventSource?.on) {
           ctx.eventSource.on(eventName, handler);
           listeners.push({ kind:'st', source:ctx.eventSource, eventName, handler });
+          return;
+        }
+      } catch (_) {}
+      try {
+        if (typeof eventOn === 'function') {
+          eventOn(eventName, handler);
+          listeners.push({ kind:'th', eventName, handler });
         }
       } catch (_) {}
     };
@@ -1137,17 +1222,24 @@ ${seedContent}
     onFn(genEvent, async (type, options, dryRun) => {
       if (dryRun) return;
       config = loadConfig();
-      if (!config.enabled) { await injectOutline(stContext(), null); return; }
+      if (!config.enabled) { preparedGenerationInjection = null; await injectOutline(stContext(), null); return; }
 
       if (isQuietLikeType(type)) {
+        preparedGenerationInjection = null;
+        activeLengthContract = null;
         await injectOutline(stContext(), null);
         return;
       }
 
       if (isContinueType(type)) {
         const current = outlineForCurrentBranch(stContext());
-        if (current?.outline) await injectOutline(stContext(), current.outline, { ...current, isReroll:false });
-        else await injectOutline(stContext(), null);
+        if (current?.outline) {
+          await injectOutline(stContext(), current.outline, { ...current, isReroll:false });
+          rememberPreparedInjection(current.outline, { ...current, isReroll:false });
+        } else {
+          preparedGenerationInjection = null;
+          await injectOutline(stContext(), null);
+        }
         return;
       }
 
@@ -1156,21 +1248,44 @@ ${seedContent}
       await runPlanner({ generationType:type });
     });
 
-    onFn(receivedEvent, async () => {
+    onFn(beforeCombineEvent, async () => {
+      if (!preparedGenerationInjection?.outline) return;
+      await injectOutline(stContext(), preparedGenerationInjection.outline, preparedGenerationInjection.meta || {});
+    });
+
+    onFn(promptReadyEvent, async (eventData) => {
+      activeLengthContract = parseLengthContractFromPrompt(eventData?.chat || []);
+    });
+
+    onFn(receivedEvent, async (messageId) => {
       setTimeout(async () => {
-        try { await recordCurrentAssistantBranch(stContext()); } catch (_) {}
+        const c = stContext();
+        try { await recordCurrentAssistantBranch(c); } catch (_) {}
+        const audit = auditMessageLength(c, Number(messageId));
+        if (audit) {
+          const msg = `Story words: ${audit.words}/${audit.target} · hard min ${audit.min} · ${audit.pass ? 'PASS' : 'SHORT'}`;
+          console.info(`[Miemie Length Audit] ${msg}`);
+          if (!audit.pass) {
+            try { (hostWindow.toastr || globalThis.toastr)?.warning?.(`Miemie: ${msg}`); } catch (_) {}
+          }
+          setStatus(msg);
+        }
         renderPreview();
       }, 0);
     });
 
     onFn(swipedEvent, async () => {
       plannerEpoch++;
+      preparedGenerationInjection = null;
+      activeLengthContract = null;
       await injectOutline(stContext(), null);
       renderPreview();
     });
 
     const invalidateOnMutation = async () => {
       plannerEpoch++;
+      preparedGenerationInjection = null;
+      activeLengthContract = null;
       await injectOutline(stContext(), null);
       renderPreview();
     };
@@ -1179,6 +1294,8 @@ ${seedContent}
 
     onFn(chatEvent, async () => {
       plannerEpoch++;
+      preparedGenerationInjection = null;
+      activeLengthContract = null;
       await injectOutline(stContext(), null);
       setTimeout(() => renderPreview(), 80);
     });
@@ -1211,6 +1328,6 @@ ${seedContent}
   await injectOutline(stContext(), null);
 
   window[SCRIPT_KEY] = { version: VERSION, open: openUi, run: () => runPlanner({ manual:true, generationType:'manual' }), cleanup, getConfig: () => ({...config}) };
-  try { hostWindow.__MIEMIE_FUTURE_PLANNER_RUNTIME__ = { version: VERSION, schema: 5, branchSafeReroll: true, worldPulseContext: true, loadedAt: new Date().toISOString() }; } catch (_) {}
-  console.info(`[Miemie Future Planner] loaded v${VERSION}; schema=5; branch-safe-reroll=ON; UI host=${hostDocument === document ? 'script-frame' : 'parent-document'}`);
+  try { hostWindow.__MIEMIE_FUTURE_PLANNER_RUNTIME__ = { version: VERSION, schema: 6, branchSafeReroll: true, worldPulseContext: true, generationHook:'GENERATION_AFTER_COMMANDS', lengthAudit:true, loadedAt: new Date().toISOString() }; } catch (_) {}
+  console.info(`[Miemie Future Planner] loaded v${VERSION}; schema=6; branch-safe-reroll=ON; UI host=${hostDocument === document ? 'script-frame' : 'parent-document'}`);
 })();

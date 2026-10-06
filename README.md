@@ -1,4 +1,4 @@
-# Miemie Future Planner v1.9.0
+# Miemie Future Planner v1.10.0
 
 Bản strict planner dùng cho preset Miemie.
 
@@ -14,7 +14,7 @@ Bản strict planner dùng cho preset Miemie.
 Ghi đè `dist/index.js`, hai file trong `release/`, và README rồi push. Preset GitHub loader hiện tại sẽ tự tải `dist/index.js` mới sau reload SillyTavern.
 
 
-## v1.9.0 strict migration
+## v1.10.0 strict migration
 - Uses schema-v2 metadata/injection IDs so stale v1 outlines cannot survive.
 - Deletes legacy chat metadata and legacy extension prompt on load.
 - Refuses to inject any outline whose `version` is not `2`.
@@ -22,48 +22,48 @@ Ghi đè `dist/index.js`, hai file trong `release/`, và README rồi push. Pres
 - Keeps canon protagonist encounters out of `objective_locked`.
 
 
-## v1.9.0
+## v1.10.0
 - Current explicit user intent is not converted into a conditional obstacle thread.
 - No invented travel/booking/legal/account/NPC-veto friction without established facts.
 - Conditional gates must be grounded in existing world state.
 
 
-## v1.9.0
+## v1.10.0
 - User ESTABLISH input is the highest-authority immutable causal root.
 - Planner applies user state first, then derives all consequences from post-user state.
 - Old world facts/canon/NPC opposition cannot veto declarative user input.
 - ATTEMPT remains calculable only for unresolved outcomes.
 
 
-## v1.9.0 FORCE VERIFY
+## v1.10.0 FORCE VERIFY
 - Adds a visible build marker and VERIFY_V1.4.1.txt so overwrite/push issues are obvious.
 
 
-## v1.9.0 FIX
+## v1.10.0 FIX
 - Fixes JavaScript syntax error `Unexpected identifier s` caused by the apostrophe in `user's` inside a single-quoted JavaScript string.
 - `node --check dist/index.js` passes.
 
 
-## v1.9.0 CANON BACKBONE
+## v1.10.0 CANON BACKBONE
 - Restores autonomous canon/world progression after user state is applied.
 - Valid canon encounters are allowed when time/location/route prerequisites intersect.
 - Open-direction user travel can be guided toward the nearest valid canon/world hook.
 - Removes the overcorrection that made every event depend on user causation.
 
-## v1.9.0 — CURRENT SCENE HOOK / schema v3
+## v1.10.0 — CURRENT SCENE HOOK / schema v3
 - Adds `scene_hook` with MANDATORY_NOW / OPTIONAL_NOW / NONE.
 - MANDATORY_NOW is injected separately as `<external_scene_hook>` and must happen in the next story scene.
 - Future outline no longer suppresses card/worldbook current plot-driving instructions.
 - Open-direction travel should select a concrete canon/world waypoint instead of endless sailing filler.
 
-## v1.9.0 — schema v4 EARLY SCENE SEED
+## v1.10.0 — schema v4 EARLY SCENE SEED
 - Replaces end-of-generation hook behavior with an EARLY scene seed.
 - MANDATORY_EARLY must enter within the first 1–2 prose paragraphs, then the scene develops from it.
 - Active NPC initiative can seed dialogue naturally; there is no dialogue quota.
 - Scene seed cannot authorize user ability effects, hidden knowledge, status flex, or narrator praise.
 - Planner future outline and current scene seed are separate responsibilities.
 
-## v1.9.0 — BRANCH / SWIPE SAFE REROLL
+## v1.10.0 — BRANCH / SWIPE SAFE REROLL
 - Removes the single chat-global outline architecture.
 - Planner candidates are keyed by the exact selected branch and user-turn basis.
 - Reroll/regenerate runs the secondary planner fresh from the accepted parent branch.
@@ -75,7 +75,7 @@ Ghi đè `dist/index.js`, hai file trong `release/`, và README rồi push. Pres
 - Async results are discarded when the branch changes mid-call.
 - Reroll API failure fails closed instead of falling back to the rejected candidate.
 
-## v1.9.0 — WORLD PULSE / schema v5
+## v1.10.0 — WORLD PULSE / schema v5
 - Root fix for world passivity: User Authority no longer implies that every event must derive from the user's action.
 - Adds mandatory `scene_state`: ACTIVE_INTERACTION / EXPLICIT_DOWNTIME / PASSIVE_TRANSIT / PASSIVE_REST / STATIC_AFTER_ACTION / WORLD_BEAT_DUE.
 - PASSIVE_TRANSIT, PASSIVE_REST and STATIC_AFTER_ACTION must produce a grounded state delta unless the user explicitly requested downtime.
@@ -84,3 +84,13 @@ Ghi đè `dist/index.js`, hai file trong `release/`, và README rồi push. Pres
 - `seed=NONE` no longer means world freeze: main model must fall back to card/worldbook/extension-state world initiative.
 - Decision boundary is after the world/NPC action, never before it.
 - Branch-safe reroll from v1.8 remains intact.
+
+## v1.10.0 — TIMING / NPC VISIBILITY / LENGTH AUDIT
+- Planner hook moved from `GENERATION_STARTED` to `GENERATION_AFTER_COMMANDS`.
+- Prepared injection is re-applied at `GENERATE_BEFORE_COMBINE_PROMPTS` without a second planner call.
+- Schema v6 adds `scene_seed.npc_visible_user_facts`.
+- Persona/status/MVU/SP.Auto Database are GM truth, not automatic NPC knowledge.
+- NPC bounty/power/identity knowledge requires OBSERVED / TOLD / RECORD_SEEN / PRIOR_ACQUIRED / PUBLIC_RECORD_ACCESS.
+- Captures the resolved `[MIEMIE_LENGTH_CONTRACT ...]` from the outgoing Chat Completion prompt and counts actual story words on `MESSAGE_RECEIVED`.
+- Under-minimum outputs raise a visible warning and are exposed as `lastLengthAudit` in runtime diagnostics.
+- Branch-safe reroll and WORLD PULSE remain intact.

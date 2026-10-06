@@ -1,0 +1,10 @@
+Miemie Future Planner v1.10.0
+outline_schema=6
+storage=branch_store_v1
+BUILD=AFTER_COMMANDS_NPC_VIS_LENGTH_AUDIT_SCHEMA6_2026-10-06
+generation_hook=GENERATION_AFTER_COMMANDS
+late_reinject=GENERATE_BEFORE_COMBINE_PROMPTS
+npc_visibility_whitelist=ON
+length_audit=ON
+branch_safe_reroll=ON
+SHA256=5943fa26f0d1014d23a3c2d568a61cf52fceb2340e42ed9895bc713926accf0e
