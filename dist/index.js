@@ -1,8 +1,8 @@
 (async () => {
   'use strict';
 
-  const VERSION = '1.10.0';
-  const BUILD_MARKER = 'AFTER_COMMANDS_NPC_VIS_LENGTH_AUDIT_SCHEMA6_2026-10-06';
+  const VERSION = '1.11.0';
+  const BUILD_MARKER = 'REROLL_NO_MODEL_BRANCH_DROP_BLOCK_AUDIT_2026-10-09';
   const SCRIPT_KEY = '__MIEMIE_FUTURE_PLANNER_EXTERNAL__';
   const BUTTON_NAME = 'Miemie Future Planner';
   const STORAGE_KEY = 'miemie_future_planner_external_config_v1';
@@ -860,6 +860,47 @@ ${seedContent}
     await saveBranchStore(ctx, store);
   }
 
+  async function clearRerollTurnWithoutPlanner(ctx, generationType) {
+    // Do not wait for the secondary model on reroll. Work from the accepted
+    // messages before the assistant swipe, not from the rejected content.
+    plannerEpoch++;
+    preparedGenerationInjection = null;
+    activeLengthContract = null;
+    const baseMessages = generationBaseMessages(ctx, generationType);
+    const baseKey = branchKeyFromMessages(baseMessages);
+    const turnId = userTurnId(baseMessages);
+    const parentKey = parentBranchKey(baseMessages);
+
+    if (ctx?.chatMetadata) {
+      const store = getBranchStore(ctx);
+      delete store.candidates[baseKey];
+      // No head of a rejected/previous swipe for this turn can reference a
+      // stale candidate. Keep heads/candidates for OTHER turns intact.
+      for (const [key, head] of Object.entries(store.heads)) {
+        if (head?.baseKey === baseKey) delete store.heads[key];
+      }
+      ctx.chatMetadata[META_KEY] = pruneBranchStore(store);
+      // saveMetadata can entail disk/network IO. Start persistence now but
+      // do NOT gate the generation on it. The in-memory store is already clean.
+      try {
+        Promise.resolve(ctx.saveMetadata?.()).catch(e =>
+          console.warn('[MFP] Reroll metadata save failed', e));
+      } catch (e) { console.warn('[MFP] Reroll metadata save failed', e); }
+    }
+
+    // Remove the rejected candidate and seed from the active prompt. Inject
+    // only a short branch guard, NOT a replacement future outline.
+    await injectOutline(ctx, null);
+    if (config.enabled && ctx?.setExtensionPrompt) {
+      const guard = `<external_branch_guard planner_version="${VERSION}" reroll="true" branch_key="${baseKey}" turn_id="${turnId}" parent_key="${parentKey}">
+The newest user message is the SAME turn being regenerated. Ignore the rejected assistant swipe, its outline, cached decisions and event consequences. Do not interpret the repeated input as a new follow-up decision. Use accepted history, card, worldbook and current user input; NPC/world processes may advance normally. There is NO current-turn external future outline or scene seed.
+</external_branch_guard>`;
+      await ctx.setExtensionPrompt(EXT_PROMPT_ID, guard, 1, 0, false, 0);
+    }
+    setStatus(`REROLL FAST · ${turnId} · current-turn outline deleted · no secondary model call`);
+    renderPreview();
+  }
+
   async function runPlanner({ manual = false, generationType = '' } = {}) {
     if (busy) return;
     const ctx = stContext();
@@ -965,7 +1006,7 @@ ${seedContent}
       <div class="mfp-row"><div><label>Timeout (ms)</label><input id="mfp-timeout" type="number" min="10000" max="180000" value="${esc(config.timeoutMs)}"></div><div><label>Strict lock</label><input value="ON · depth 0" disabled></div><div></div></div>
       <div class="mfp-actions"><button id="mfp-save">Lưu cấu hình</button><button id="mfp-test">Test + Load model</button><button id="mfp-run">Tính đại cương ngay</button><button id="mfp-clear">Xóa outline chat này</button></div>
       <div id="mfp-status" class="mfp-status"></div>
-      <div class="mfp-note">Planner chỉ lập đại cương kín. Nếu endpoint chặn CORS, hãy dùng URL proxy có cho phép browser request. Planner v1.10: AFTER_COMMANDS timing + pre-combine reinjection, schema v6 NPC visibility whitelist, branch-safe reroll, WORLD PULSE, and real story word audit.</div>
+      <div class="mfp-note">Planner chỉ lập đại cương kín. Nếu endpoint chặn CORS, hãy dùng URL proxy có cho phép browser request. Planner v1.11: reroll never calls the secondary model; deletes only current-turn outline and injects a branch guard. Normal turns still update schema v6; story block + real word audit enabled.</div>
     </section>
     <section class="mfp-section">
       <h3>Đại cương hiện tại</h3>
@@ -1172,10 +1213,33 @@ ${seedContent}
     }
   }
 
+  function auditStoryBlocks(rawMessage) {
+    const raw = String(rawMessage || '');
+    const scene = raw.match(/<story_scene\b[^>]*>([\s\S]*?)<\/story_scene>/i);
+    const content = scene ? scene[1] : raw;
+    const blocks = [];
+    const re = /<m500\s+n=["']([1-6])["']\s*>([\s\S]*?)<\/m500>/gi;
+    let match;
+    while ((match = re.exec(content))) {
+      blocks.push({ part:Number(match[1]), words:countWords(storyTextForWordCount(match[2])) });
+    }
+    const ordered = blocks.length === 6 && blocks.every((item, i) => item.part === i + 1);
+    return {
+      completed:blocks.length,
+      ordered,
+      parts:blocks,
+      // Six markers alone do not prove 3000 words; actual count is authoritative.
+      roughly500:ordered && blocks.every(b => b.words >= 400 && b.words <= 600),
+    };
+  }
+
   function auditMessageLength(ctx, messageId) {
     if (!activeLengthContract || !ctx?.chat?.[messageId]) return null;
-    const words = countWords(storyTextForWordCount(ctx.chat[messageId].mes || ''));
+    const raw = ctx.chat[messageId].mes || '';
+    const words = countWords(storyTextForWordCount(raw));
+    const blockAudit = auditStoryBlocks(raw);
     const result = {
+      storyBlocks: blockAudit,
       words,
       target: activeLengthContract.target,
       min: activeLengthContract.min,
@@ -1222,6 +1286,12 @@ ${seedContent}
     onFn(genEvent, async (type, options, dryRun) => {
       if (dryRun) return;
       config = loadConfig();
+      // Handle swipe/regenerate even with AUTO OFF, so stale manually-created
+      // candidates are removed and reroll NEVER waits for a planner API call.
+      if (isRerollType(type)) {
+        await clearRerollTurnWithoutPlanner(stContext(), type);
+        return;
+      }
       if (!config.enabled) { preparedGenerationInjection = null; await injectOutline(stContext(), null); return; }
 
       if (isQuietLikeType(type)) {
@@ -1243,8 +1313,7 @@ ${seedContent}
         return;
       }
 
-      // Normal + Swipe + Regenerate all run planner.
-      // Reroll is fresh from accepted parent; rejected candidate is NOT previous state.
+      // Only normal turns call the external planner. Reroll is handled above.
       await runPlanner({ generationType:type });
     });
 
@@ -1263,7 +1332,7 @@ ${seedContent}
         try { await recordCurrentAssistantBranch(c); } catch (_) {}
         const audit = auditMessageLength(c, Number(messageId));
         if (audit) {
-          const msg = `Story words: ${audit.words}/${audit.target} · hard min ${audit.min} · ${audit.pass ? 'PASS' : 'SHORT'}`;
+          const msg = `Story words: ${audit.words}/${audit.target} · blocks ${audit.storyBlocks.completed}/6 · hard min ${audit.min} · ${audit.pass ? 'PASS' : 'SHORT'}`;
           console.info(`[Miemie Length Audit] ${msg}`);
           if (!audit.pass) {
             try { (hostWindow.toastr || globalThis.toastr)?.warning?.(`Miemie: ${msg}`); } catch (_) {}
@@ -1328,6 +1397,6 @@ ${seedContent}
   await injectOutline(stContext(), null);
 
   window[SCRIPT_KEY] = { version: VERSION, open: openUi, run: () => runPlanner({ manual:true, generationType:'manual' }), cleanup, getConfig: () => ({...config}) };
-  try { hostWindow.__MIEMIE_FUTURE_PLANNER_RUNTIME__ = { version: VERSION, schema: 6, branchSafeReroll: true, worldPulseContext: true, generationHook:'GENERATION_AFTER_COMMANDS', lengthAudit:true, loadedAt: new Date().toISOString() }; } catch (_) {}
+  try { hostWindow.__MIEMIE_FUTURE_PLANNER_RUNTIME__ = { version: VERSION, schema: 6, branchSafeReroll: true, worldPulseContext: true, generationHook:'GENERATION_AFTER_COMMANDS', rerollNoModel:true, storyBlockAudit:true, lengthAudit:true, loadedAt: new Date().toISOString() }; } catch (_) {}
   console.info(`[Miemie Future Planner] loaded v${VERSION}; schema=6; branch-safe-reroll=ON; UI host=${hostDocument === document ? 'script-frame' : 'parent-document'}`);
 })();

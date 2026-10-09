@@ -94,3 +94,12 @@ Ghi đè `dist/index.js`, hai file trong `release/`, và README rồi push. Pres
 - Captures the resolved `[MIEMIE_LENGTH_CONTRACT ...]` from the outgoing Chat Completion prompt and counts actual story words on `MESSAGE_RECEIVED`.
 - Under-minimum outputs raise a visible warning and are exposed as `lastLengthAudit` in runtime diagnostics.
 - Branch-safe reroll and WORLD PULSE remain intact.
+
+## v1.11.0 — Fast reroll and six-block audit
+- Reroll (`swipe`/`regenerate`) no longer calls the secondary API, regardless of AUTO setting.
+- Deletes only the current turn's outline candidate and all heads referring to it; accepted ancestor turn data stays.
+- Removes active future outline and current seed; injects a small branch-truth guard.
+- Metadata deletion happens in memory immediately; disk save is non-blocking.
+- Normal turns and manual 'Tính đại cương' still use the secondary planner.
+- Diagnostic: `lastLengthAudit.storyBlocks` gives actual words in six `<m500 n="...">` blocks; count remains authoritative.
+- No automatic continuations or new database update runs.

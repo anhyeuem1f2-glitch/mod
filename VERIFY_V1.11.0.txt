@@ -1,0 +1,10 @@
+Miemie Future Planner v1.11.0
+outline_schema=6
+BUILD=REROLL_NO_MODEL_BRANCH_DROP_BLOCK_AUDIT_2026-10-09
+reroll_secondary_api_calls=ZERO
+reroll_current_turn_outline_delete=ON
+reroll_keep_parent_branch=ON
+reroll_metadata_save=NON_BLOCKING
+story_m500_block_audit=ON
+real_word_count=ON
+SHA256=42daa2764cd52a41e2dab7160f5f54da037af1a8eeeec0cb12f29d05a7361aca
